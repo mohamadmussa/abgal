@@ -20,7 +20,9 @@ apk/*
 *.local.*
 *.local/
 
-# Logs.
+# Logs. One folder per guest, plus the rotated generation, which the
+# suffix rule below would miss because it ends in .1 and not in .log.
+logs/
 *.log
 
 # The concrete words the commit gate refuses. Local only, by design:
