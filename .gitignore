@@ -13,6 +13,10 @@ results/
 apk/*
 !apk/README.md
 
+# The version of the app under test. That is a property of whoever tests,
+# not of this project, so it stays on the machine that does the testing.
+app.conf
+
 # German working copies. The published language is English.
 *.de.md
 
