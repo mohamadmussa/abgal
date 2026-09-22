@@ -1,0 +1,14 @@
+# Words this machine must never publish, one per line, as "label = regex".
+#
+# Copy this file to .private-words and fill in your own values. That copy is
+# ignored by git on purpose. A deny list that ships with the repository would
+# publish exactly the values it is meant to protect.
+#
+# The structural patterns, such as private IP ranges, mail addresses and phone
+# numbers, are built into tools/check-private.py and need no entry here. This
+# file is for the literals only you know about.
+
+# host name = ^$
+# home network = ^$
+# user name = ^$
+# employer = ^$
