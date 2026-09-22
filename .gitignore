@@ -1,0 +1,32 @@
+# Android SDK, downloaded by tools/fetch-prerequisites.sh, several gigabytes.
+sdk/
+
+# Virtual device images and their runtime state, several gigabytes.
+avd/
+
+# Raw experiment output and run artifacts, local evidence only.
+experiments/
+runs/
+results/
+
+# Downloaded application packages.
+apk/*
+!apk/README.md
+
+# German working copies. The published language is English.
+*.de.md
+
+# Local files and folders of any kind.
+*.local.*
+*.local/
+
+# Logs.
+*.log
+
+# The concrete words the commit gate refuses. Local only, by design:
+# a published deny list would publish the very values it protects.
+.private-words
+
+# Python bytecode.
+__pycache__/
+*.pyc
