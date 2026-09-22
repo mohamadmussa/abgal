@@ -21,6 +21,7 @@ import argparse
 import grp
 import os
 import re
+import secrets
 import shlex
 import signal
 import subprocess
@@ -52,6 +53,11 @@ OVERHEAD_MB = 1024
 # run, and without this reserve it would wave through a start that only
 # turns out to be too much once nobody is watching.
 RESERVE_MB = 1024
+
+# How long the id of a guest is. Eight hex characters are four thousand
+# million possibilities, far more than one machine will ever hold, and still
+# short enough to type out by hand.
+ID_CHARS = 8
 
 
 # ---------------------------------------------------------------- foundation
@@ -163,8 +169,32 @@ def templates():
     return found
 
 
+def guest_id(folder):
+    """The id of this guest, given to it once and never changed again.
+
+    The file is created with O_EXCL, so two processes that meet a guest
+    without an id at the same moment cannot both give it one. The loser of
+    that race reads what the winner wrote, on the second turn.
+    """
+    mark = folder / "abgal-id"
+    for _ in range(2):
+        try:
+            found = mark.read_text(errors="replace").strip()
+        except OSError:
+            found = ""
+        if found:
+            return found
+        try:
+            handle = os.open(str(mark), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except OSError:
+            continue
+        with os.fdopen(handle, "w") as stream:
+            stream.write(secrets.token_hex(ID_CHARS // 2) + "\n")
+    return "unknown"
+
+
 def guests():
-    """Every guest on disk, with the template it was created from."""
+    """Every guest on disk, with its template and its id."""
     found = []
     if not AVD.is_dir():
         return found
@@ -175,7 +205,7 @@ def guests():
         template = "unknown"
         if mark.is_file():
             template = mark.read_text(errors="replace").strip() or "unknown"
-        found.append((folder.name[:-4], template))
+        found.append((folder.name[:-4], template, guest_id(folder)))
     return found
 
 
@@ -183,12 +213,20 @@ def guest_folder(name):
     return AVD / (name + ".avd")
 
 
-def require_guest(name):
-    if (guest_folder(name) / "config.ini").is_file():
-        return
-    known = [g for g, _ in guests()]
+def resolve(wanted):
+    """The name of the guest behind a name or an id.
+
+    Both work wherever a guest has to be named. The id belongs to this one
+    guest for its whole life, while a name is freed by a delete and can be
+    handed to a different guest later.
+    """
+    rows = guests()
+    for name, _, number in rows:
+        if wanted in (name, number):
+            return name
+    known = ", ".join("%s (%s)" % (n, i) for n, _, i in rows)
     fail("there is no guest called '%s'.\n       On disk: %s"
-         % (name, ", ".join(known) if known else "nothing yet."))
+         % (wanted, known or "nothing yet."))
 
 
 def qemu_processes():
@@ -310,8 +348,8 @@ def cmd_list(args):
     if not rows:
         print("  none yet. Create one with: abgal create <template>")
         return 0
-    for name, template in rows:
-        print("  %-24s from %s" % (name, template))
+    for name, template, number in rows:
+        print("  %-24s %-9s from %s" % (name, number, template))
     return 0
 
 
@@ -350,31 +388,28 @@ def cmd_create(args):
 
 
 def cmd_delete(args):
-    require_guest(args.name)
-    pid = running_pid(args.name)
+    name = resolve(args.name)
+    pid = running_pid(name)
     if pid:
-        fail("%s is running as pid %d. Stop it first." % (args.name, pid))
+        fail("%s is running as pid %d. Stop it first." % (name, pid))
 
     if not args.yes:
         if not sys.stdin.isatty():
-            fail("nothing to ask on. Pass --yes to delete %s unattended." % args.name)
-        answer = input("Delete %s and its disk? This cannot be undone. [y/N] "
-                       % args.name)
+            fail("nothing to ask on. Pass --yes to delete %s unattended." % name)
+        answer = input("Delete %s and its disk? This cannot be undone. [y/N] " % name)
         if answer.strip().lower() not in ("y", "yes"):
             print("Nothing was deleted.")
             return 1
 
     manager = SDK / "cmdline-tools" / "latest" / "bin" / "avdmanager"
-    done = subprocess.run(
-        [str(manager), "delete", "avd", "-n", args.name], env=sdk_env()
-    )
-    if done.returncode != 0 or guest_folder(args.name).exists():
-        fail("avdmanager did not remove %s." % args.name)
+    done = subprocess.run([str(manager), "delete", "avd", "-n", name], env=sdk_env())
+    if done.returncode != 0 or guest_folder(name).exists():
+        fail("avdmanager did not remove %s." % name)
 
     # The logs stay. They are the record of what this guest did, they cost
     # almost nothing, and a guest of the same name later starts a fresh file
     # and keeps the previous one as .1 anyway.
-    print("%s is gone. Its folder under logs/ was left in place." % args.name)
+    print("%s is gone. Its folder under logs/ was left in place." % name)
     return 0
 
 
@@ -419,8 +454,7 @@ def cmd_start(args):
         print()
         return cmd_list(args)
 
-    name = args.name
-    require_guest(name)
+    name = resolve(args.name)
 
     pid = running_pid(name)
     if pid:
@@ -566,10 +600,9 @@ def stop_one(name, serial, grace):
 
 def cmd_stop(args):
     if args.name:
-        require_guest(args.name)
-        targets = [args.name]
+        targets = [resolve(args.name)]
     else:
-        targets = [g for g, _ in guests() if running_pid(g) is not None]
+        targets = [g for g, _, _ in guests() if running_pid(g) is not None]
 
     if not targets:
         print("Nothing is running.")
@@ -593,8 +626,8 @@ def cmd_stop(args):
 def cmd_status(args):
     rows = guests()
     if args.name:
-        require_guest(args.name)
-        rows = [r for r in rows if r[0] == args.name]
+        wanted = resolve(args.name)
+        rows = [r for r in rows if r[0] == wanted]
     if not rows:
         print("No guests on disk. Create one with: abgal create <template>")
         return 0
@@ -613,15 +646,15 @@ def cmd_status(args):
             by_name[found] = (serial, state)
 
     free = available_mb()
-    layout = "%-24s %-12s %-15s %-13s %s"
-    print(layout % ("GUEST", "STATE", "SERIAL", "ADB", "TEMPLATE"))
-    for name, template in rows:
+    layout = "%-22s %-9s %-11s %-14s %-12s %s"
+    print(layout % ("GUEST", "ID", "STATE", "SERIAL", "ADB", "TEMPLATE"))
+    for name, template, number in rows:
         pid = running_pid(name)
         serial, state = by_name.get(name, (None, None))
         running = "stopped" if pid is None else "pid %d" % pid
         if pid is not None and serial is None:
             state = "not visible"
-        print(layout % (name, running, serial or "-", state or "-", template))
+        print(layout % (name, number, running, serial or "-", state or "-", template))
 
     unclaimed = [s for s, v in states.items() if v == "unauthorized"]
     if unclaimed:
@@ -672,12 +705,14 @@ def build_parser():
     create.set_defaults(run=cmd_create)
 
     delete = subs.add_parser("delete", help="delete one guest and its disk")
-    delete.add_argument("-n", "--name", required=True, help="the guest to delete")
+    delete.add_argument("-n", "--name", required=True, metavar="GUEST",
+                        help="the guest to delete, by name or by id")
     delete.add_argument("--yes", action="store_true", help="do not ask first")
     delete.set_defaults(run=cmd_delete)
 
     start = subs.add_parser("start", help="start one guest")
-    start.add_argument("-n", "--name", help="the guest to start")
+    start.add_argument("-n", "--name", metavar="GUEST",
+                       help="the guest to start, by name or by id")
     start.add_argument("--port", type=int,
                        help="a fixed port. Without it the emulator picks one")
     start.add_argument("--gpu", default=os.environ.get("ABGAL_GPU", "software"),
@@ -703,7 +738,8 @@ def build_parser():
     stop.set_defaults(run=cmd_stop)
 
     status = subs.add_parser("status", help="what is on disk and what is running")
-    status.add_argument("-n", "--name", help="only this guest")
+    status.add_argument("-n", "--name", metavar="GUEST",
+                        help="only this guest, by name or by id")
     status.set_defaults(run=cmd_status)
 
     return parser
