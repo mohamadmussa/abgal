@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+  The screen descriptions. One device block per class of screen.
+
+  This file describes a screen, and the screen is what decides how an app
+  lays itself out. It is the one piece of this project that is worth copying
+  to a workstation, because the same description there produces the same
+  layout as the guests created here.
+
+  The device below is named after what it is, not after a phone it resembles.
+  An emulator is not a particular handset and should not claim to be one. The
+  numbers, however, were measured on a real handset with a 6.2 inch display,
+  on 2026-09-20, and not assumed:
+
+    adb shell wm size      Physical size: 1080x2400
+    adb shell wm density   Physical density: 480
+    adb shell getprop ro.build.version.sdk   35
+
+  Schema version 8, copied from the Pixel 6 entry in
+  cmdline-tools/latest/lib/sdklib/sdklib.core.jar, com/android/sdklib/devices/nexus.xml.
+  The often cited version 7 is outdated, the tool here writes 8.
+
+  It is installed by placing it at ~/.android/devices.xml, where the SDK
+  tools read it. create-avd.sh links it there on first use.
+-->
+
+<d:devices
+        xmlns:d="http://schemas.android.com/sdk/devices/8">
+
+    <d:device>
+        <d:name>Phone 1080x2400 480dpi</d:name>
+        <d:id>phone-1080x2400-480</d:id>
+        <d:manufacturer>Generic</d:manufacturer>
+
+        <!--
+          Changed from false to true on 2026-09-20. The switch does not say
+          that a store is running. It only says that this device may be
+          paired with an image that brings one. If it is false, avdmanager
+          refuses the pairing.
+
+          Whether a guest really gets the store is decided by the tag column
+          in devices.conf, that is, by the image. This file therefore still
+          describes nothing but the screen, and every template that shares
+          that screen shares one description instead of keeping copies that
+          drift apart.
+        -->
+        <d:playstore-enabled>true</d:playstore-enabled>
+
+        <d:hardware>
+            <d:screen>
+                <!-- 1080 / (480/160) = 360 dp width, so class normal -->
+                <d:screen-size>normal</d:screen-size>
+                <d:diagonal-length>6.2</d:diagonal-length>
+
+                <!--
+                  The most important value in the whole file. An app ships its
+                  images as one split per density, for example
+                  split_config.xxhdpi.apk. The density decides which of those
+                  a guest loads, so a guest at the wrong density tests a
+                  different set of images than the handset does.
+
+                  Watch out for the near miss: the Pixel 6 profile carries the
+                  same 1080x2400, but at 420. Same resolution, different
+                  images. That is why this description exists at all.
+                -->
+                <d:pixel-density>xxhdpi</d:pixel-density>
+                <d:screen-ratio>long</d:screen-ratio>
+                <d:dimensions>
+                    <d:x-dimension>1080</d:x-dimension>
+                    <d:y-dimension>2400</d:y-dimension>
+                </d:dimensions>
+
+                <!--
+                  The physical value, computed: sqrt(1080^2 + 2400^2) / 6.2 inch
+                  = 424.5. The handset reports 480 regardless, and 480 is what
+                  an app sees. So 480 counts above, and this line holds the
+                  truth about the glass.
+                -->
+                <d:xdpi>424.48</d:xdpi>
+                <d:ydpi>424.48</d:ydpi>
+                <d:touch>
+                    <d:multitouch>jazz-hands</d:multitouch>
+                    <d:mechanism>finger</d:mechanism>
+                    <d:screen-type>capacitive</d:screen-type>
+                </d:touch>
+            </d:screen>
+            <d:networking>
+                Wifi
+                Bluetooth
+                NFC
+            </d:networking>
+            <d:sensors>
+                Accelerometer
+                Barometer
+                Compass
+                GPS
+                Gyroscope
+                LightSensor
+                ProximitySensor
+                StepCounter
+                StepDetector
+            </d:sensors>
+            <d:mic>true</d:mic>
+            <d:camera>
+                <d:location>back</d:location>
+                <d:autofocus>true</d:autofocus>
+                <d:flash>true</d:flash>
+            </d:camera>
+            <d:camera>
+                <d:location>front</d:location>
+                <d:autofocus>true</d:autofocus>
+                <d:flash>false</d:flash>
+            </d:camera>
+            <d:keyboard>nokeys</d:keyboard>
+            <d:nav>nonav</d:nav>
+
+            <!--
+              4 GiB, deliberately less than a current handset carries. This is
+              the value every guest gets, on a laptop and on a large machine
+              alike. Equal beats generous here, because only equal is
+              repeatable, and because several guests have to fit side by side.
+            -->
+            <d:ram unit="GiB">4</d:ram>
+            <d:buttons>soft</d:buttons>
+            <d:internal-storage unit="GiB">128</d:internal-storage>
+            <d:removable-storage unit="MiB">0</d:removable-storage>
+            <d:cpu>Generic</d:cpu>
+            <d:gpu>Generic</d:gpu>
+
+            <!--
+              A handset of this class runs arm64-v8a. This says x86_64 because
+              that is what the guest actually computes: on an x86 host, an
+              x86_64 image runs through hardware virtualisation, while an ARM
+              image has to be translated instruction by instruction and is far
+              too slow to run a suite against. The instruction set is part of
+              the template name in devices.conf, so an ARM template can be
+              added later without either of them becoming ambiguous.
+            -->
+            <d:abis>
+                x86_64
+            </d:abis>
+            <d:dock></d:dock>
+            <d:power-type>battery</d:power-type>
+        </d:hardware>
+        <d:software>
+            <!--
+              Exactly 35, never a range. A range would let the tools pick a
+              different level on a different machine, and then two runs that
+              claim to be the same are not.
+            -->
+            <d:api-level>35</d:api-level>
+            <d:live-wallpaper-support>true</d:live-wallpaper-support>
+            <d:bluetooth-profiles></d:bluetooth-profiles>
+            <d:gl-version>3.2</d:gl-version>
+            <d:gl-extensions></d:gl-extensions>
+            <d:status-bar>true</d:status-bar>
+        </d:software>
+        <d:state name="Portrait" default="true">
+            <d:description>The device in portrait view</d:description>
+            <d:screen-orientation>port</d:screen-orientation>
+            <d:keyboard-state>keyssoft</d:keyboard-state>
+            <d:nav-state>nonav</d:nav-state>
+        </d:state>
+        <d:state name="Landscape">
+            <d:description>The device in landscape view</d:description>
+            <d:screen-orientation>land</d:screen-orientation>
+            <d:keyboard-state>keyssoft</d:keyboard-state>
+            <d:nav-state>nonav</d:nav-state>
+        </d:state>
+    </d:device>
+</d:devices>
