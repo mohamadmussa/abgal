@@ -10,8 +10,9 @@ machine outside it.
   abgal create <template>             one guest, named after the template
   abgal create <template> --count 10  ten guests, numbered
   abgal start -n <guest>              start one guest
+  abgal start -n <a> -n <b>           start them one after another
   abgal status                        what is on disk and what is running
-  abgal stop                          stop every running guest
+  abgal stop -n <guest>               stop that guest
 
 Only the Python standard library is used. There is nothing to install and
 nothing to package: the file is the program.
@@ -66,6 +67,16 @@ ID_CHARS = 8
 def fail(message):
     print("ERROR: " + message, file=sys.stderr)
     sys.exit(1)
+
+
+def problem(message):
+    """Says what went wrong without ending the program.
+
+    A batch keeps going after one guest has refused, so its reason is printed
+    where it happened and counted at the end.
+    """
+    print("ERROR: " + message, file=sys.stderr)
+    return 1
 
 
 def sdk_env():
@@ -444,38 +455,23 @@ def wait_for_boot(serial, seconds):
     return False
 
 
-def cmd_start(args):
-    # Without a name this prints the help instead of starting everything.
-    # For create and status "all of them" is harmless, for start it is not:
-    # thirty guests at once would take the machine down, and a command that
-    # can do that should have to be spelled out.
-    if not args.name:
-        args.parser.print_help()
-        print()
-        return cmd_list(args)
-
-    name = resolve(args.name)
-
+def start_one(args, name):
     pid = running_pid(name)
     if pid:
-        fail("%s is already running as pid %d." % (name, pid))
+        return problem("%s is already running as pid %d." % (name, pid))
 
+    # Read for this guest and at this moment. In a batch the guest before it
+    # is already up and still growing, so every start gets the number that is
+    # true for it and not the one the first guest saw.
     config = read_ini(guest_folder(name) / "config.ini")
     wanted = memory_mb(config.get("hw.ramSize")) + OVERHEAD_MB
     free = available_mb()
     if free is not None and free < wanted + RESERVE_MB and not args.force:
-        fail(
+        return problem(
             "%s needs about %d MB, %d MB are free, and %d MB stay reserved for\n"
             "       the machine. Stop a guest first, or insist with --force."
             % (name, wanted, free, RESERVE_MB)
         )
-
-    if args.port is not None:
-        # The emulator's own rule, from "emulator -help-port": an even number
-        # from 5554 to 5584, because the next one up is taken by adb. Outside
-        # that range adb no longer finds the guest by itself.
-        if args.port < 5554 or args.port > 5584 or args.port % 2:
-            fail("%d is not usable. Even numbers from 5554 to 5584 only." % args.port)
 
     command = [str(EMULATOR), "-avd", name]
     if args.port is not None:
@@ -535,7 +531,7 @@ def cmd_start(args):
             tail = "\n".join(logfile.read_text(errors="replace").splitlines()[-8:])
         except OSError:
             pass
-        fail("%s did not come up. Last lines of the log:\n%s" % (name, tail))
+        return problem("%s did not come up. Last lines of the log:\n%s" % (name, tail))
 
     print("Console answers on %s." % serial)
 
@@ -556,9 +552,49 @@ def cmd_start(args):
 
     print("Waiting for the guest to finish booting.")
     if not wait_for_boot(serial, args.timeout):
-        fail("%s is running on %s but did not report a completed boot in %d s."
-             % (name, serial, args.timeout))
+        return problem("%s is running on %s but did not report a completed boot "
+                       "in %d s." % (name, serial, args.timeout))
     print("%s is ready on %s." % (name, serial))
+    return 0
+
+
+def cmd_start(args):
+    # Without a name this prints the help instead of starting everything.
+    # For create and status "all of them" is harmless, for start it is not:
+    # thirty guests at once would take the machine down, and a command that
+    # can do that should have to be spelled out, guest by guest.
+    if not args.name:
+        args.parser.print_help()
+        print()
+        return cmd_list(args)
+
+    names = [resolve(n) for n in args.name]
+
+    if args.port is not None:
+        # The emulator's own rule, from "emulator -help-port": an even number
+        # from 5554 to 5584, because the next one up is taken by adb. Outside
+        # that range adb no longer finds the guest by itself.
+        if args.port < 5554 or args.port > 5584 or args.port % 2:
+            fail("%d is not usable. Even numbers from 5554 to 5584 only." % args.port)
+        if len(names) > 1:
+            fail("--port names one port and %d guests were given. Start them in\n"
+                 "       separate calls, or let the emulator pick." % len(names))
+
+    # One after another, never at the same time. Each guest is given the whole
+    # sequence of its own start, including its own memory check, and the one
+    # after it only begins once that has come to an end.
+    failed = []
+    for number, name in enumerate(names, 1):
+        if len(names) > 1:
+            print("[%d of %d]" % (number, len(names)))
+        if start_one(args, name) != 0:
+            failed.append(name)
+        if len(names) > 1:
+            print()
+
+    if failed:
+        return problem("%d of %d guests did not start: %s"
+                       % (len(failed), len(names), ", ".join(failed)))
     return 0
 
 
@@ -675,10 +711,10 @@ EXAMPLES = """examples:
   abgal list
   abgal create phone-1080x2400-480-api35-x86_64 --as dev --count 10
   abgal start -n dev-01
+  abgal start -n dev-01 -n dev-02 -n dev-03
   abgal start -n dev-01 --gpu host --locale ar-SA
   abgal status
   abgal stop -n dev-01
-  abgal stop
 """
 
 
@@ -710,9 +746,9 @@ def build_parser():
     delete.add_argument("--yes", action="store_true", help="do not ask first")
     delete.set_defaults(run=cmd_delete)
 
-    start = subs.add_parser("start", help="start one guest")
-    start.add_argument("-n", "--name", metavar="GUEST",
-                       help="the guest to start, by name or by id")
+    start = subs.add_parser("start", help="start guests, one after another")
+    start.add_argument("-n", "--name", metavar="GUEST", action="append",
+                       help="a guest to start, by name or by id. Repeatable")
     start.add_argument("--port", type=int,
                        help="a fixed port. Without it the emulator picks one")
     start.add_argument("--gpu", default=os.environ.get("ABGAL_GPU", "software"),
