@@ -15,7 +15,9 @@
 #   ABGAL_LOCALE=ar-SA bash start-emulator.sh <g>  a different system language
 #   ABGAL_WIPE=1 bash start-emulator.sh <g>        wipe user data, first boot again
 #
-# Normally called through "abgal start", which handles logs and locking.
+# Normally called through "abgal start", which writes a log, checks the free
+# memory first and starts the temperature watch only once the guest answers.
+# This script is the plain version for a shell and starts the watch up front.
 
 set -euo pipefail
 
