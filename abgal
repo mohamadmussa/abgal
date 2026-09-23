@@ -349,7 +349,7 @@ def field(label, value):
 
 
 def run_tool(command, answer="", quiet=False):
-    """Runs avdmanager or sdkmanager and answers its questions on stdin.
+    """Runs avdmanager or the Android CLI and answers questions on stdin.
 
     The answers are written from here instead of piped from "yes". A tool
     that stops reading early then only closes a pipe, where "yes | tool"
@@ -513,7 +513,7 @@ def create_one(row, guest, recreate):
 
     images = SDK / "system-images" / ("android-" + row["api"]) / row["tag"] / row["abi"]
     if not images.is_dir():
-        print("The system image is missing. Fetching it:")
+        print("The system image is missing. Fetching it, which takes a few minutes:")
         print('  android --no-metrics sdk install "%s"' % row["image"])
         # The CLI ends with 0 even for a package it does not know, so only the
         # folder counts. Measured on 2026-09-24.
@@ -534,7 +534,7 @@ def create_one(row, guest, recreate):
     config = folder / "config.ini"
     if recreate and folder.is_dir():
         print("Deleting existing guest %s" % guest)
-        if run_tool([AVDMANAGER, "delete", "avd", "-n", guest]) != 0:
+        if run_tool([AVDMANAGER, "delete", "avd", "-n", guest], quiet=True) != 0:
             problem("avdmanager did not delete %s." % guest)
             return False
 
