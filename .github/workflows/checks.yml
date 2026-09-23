@@ -1,11 +1,6 @@
-# What has to be true before a branch reaches main.
-#
-# One deliberate gap, stated here so a green tick is not read as more than it
-# is: the commit gate has two halves. The structural patterns live in the
-# script and run here. The literal deny list lives in .private-words, which is
-# never committed and is therefore absent on this runner. A pass here means
-# "nothing of the shapes that can be described in public", not "nothing
-# private". The full gate runs locally, in .githooks/pre-commit.
+# What has to be true before a branch reaches main. The gate runs here without
+# .private-words, which is never committed, so a pass means "no private shapes",
+# not "nothing private". The full gate runs locally in .githooks/pre-commit.
 name: checks
 
 on:
@@ -43,9 +38,8 @@ jobs:
           sudo mv shellcheck-v0.10.0/shellcheck /usr/local/bin/
           shellcheck --version
 
-      # A clean ShellCheck prints nothing, and so does one that was handed no
-      # files at all. The two have to be told apart, so the list is printed and
-      # an empty one fails the step rather than passing it.
+      # A clean run and a run over no files both print nothing, so the list is
+      # printed and an empty one fails.
       - name: ShellCheck over the tracked shell files
         run: |
           set -euo pipefail
