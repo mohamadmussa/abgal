@@ -397,6 +397,15 @@ def cmd_create(args):
     if failed:
         fail("%d of %d guests were not created: %s"
              % (len(failed), len(names), ", ".join(failed)))
+
+    # The id is handed out on the first read, so this line is the moment it
+    # comes into being. Showing it here saves a look at the list afterwards.
+    print()
+    print("Created %d from %s:" % (len(names), args.template))
+    for name in names:
+        print("  %-24s %s" % (name, guest_id(guest_folder(name))))
+    print()
+    print("Start it with: abgal start -n %s" % names[0])
     return 0
 
 
@@ -662,6 +671,15 @@ def cmd_stop(args):
     # Every target is tried, and only then is the result judged. A short
     # circuit here would leave the guests after the first stubborn one running.
     results = [stop_one(name, names.get(name), args.grace) for name in targets]
+
+    # The number worth having after a stop is how much room came back, because
+    # that is what decides whether the next guest may start.
+    free = available_mb()
+    done = sum(1 for result in results if result)
+    if free is None:
+        print("%d of %d stopped." % (done, len(targets)))
+    else:
+        print("%d of %d stopped. Memory available: %d MB." % (done, len(targets), free))
     return 0 if all(results) else 1
 
 
