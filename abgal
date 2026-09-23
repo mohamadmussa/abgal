@@ -37,6 +37,8 @@ LOGS = HOME / "logs"
 BIN = HOME / "bin"
 ADB = SDK / "platform-tools" / "adb"
 EMULATOR = SDK / "emulator" / "emulator"
+AVDMANAGER = SDK / "cmdline-tools" / "latest" / "bin" / "avdmanager"
+SDKMANAGER = SDK / "cmdline-tools" / "latest" / "bin" / "sdkmanager"
 
 # The kernel truncates a process name to fifteen characters, and the binary
 # is called qemu-system-x86_64. This is the name that actually appears.
@@ -169,8 +171,11 @@ def available_mb():
 # -------------------------------------------------------------------- guests
 
 
-def templates():
-    """The templates in devices.conf, as name and note."""
+TEMPLATE_FIELDS = ("name", "device", "api", "tag", "abi", "ram", "note")
+
+
+def template_rows():
+    """Every line of devices.conf, as a dict of its seven columns."""
     found = []
     try:
         text = (HOME / "devices.conf").read_text()
@@ -181,9 +186,17 @@ def templates():
         if not line or line.startswith("#"):
             continue
         fields = [f.strip() for f in line.split("|")]
-        if len(fields) >= 7:
-            found.append((fields[0], fields[6]))
+        if len(fields) >= len(TEMPLATE_FIELDS):
+            row = dict(zip(TEMPLATE_FIELDS, fields))
+            row["image"] = "system-images;android-%s;%s;%s" % (
+                row["api"], row["tag"], row["abi"])
+            found.append(row)
     return found
+
+
+def templates():
+    """The templates in devices.conf, as name and note."""
+    return [(row["name"], row["note"]) for row in template_rows()]
 
 
 def guest_id(folder):
@@ -333,19 +346,234 @@ def field(label, value):
     print("  %-10s %s" % (label, value))
 
 
-def run_script(script, *args, env_extra=None):
-    """Runs one of the scripts in bin/ and passes its output straight through.
+def run_tool(command, answer="", quiet=False):
+    """Runs avdmanager or sdkmanager and answers its questions on stdin.
 
-    Our own output is flushed first. The script writes to the same terminal
-    without a buffer in between, so anything still held back here would
-    appear after it and describe the wrong step.
+    The answers are written from here instead of piped from "yes". A tool
+    that stops reading early then only closes a pipe, where "yes | tool"
+    under pipefail ended with 141 although the tool had succeeded.
     """
+    # The tool writes to the same terminal without our buffer in between, so
+    # anything still held back here would appear after it.
     sys.stdout.flush()
-    env = sdk_env()
-    if env_extra:
-        env.update(env_extra)
-    command = ["bash", str(BIN / script)] + [str(a) for a in args]
-    return subprocess.run(command, env=env).returncode
+    done = subprocess.run(
+        [str(c) for c in command], input=answer, text=True, env=sdk_env(),
+        stdout=subprocess.DEVNULL if quiet else None,
+    )
+    return done.returncode
+
+
+# -------------------------------------------------------------------- create
+
+
+GUEST_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+
+# avdmanager writes "key=value", the emulator rewrites the same line as
+# "key = value" at every start. Measured on 2026-09-20: 139 of 144 lines after
+# one start. Everything is brought back to the first spelling before a compare.
+CONFIG_LINE = re.compile(r"^([A-Za-z0-9._]+)\s*=\s*")
+
+DENSITIES = {"ldpi": "120", "mdpi": "160", "tvdpi": "213", "hdpi": "240",
+             "xhdpi": "320", "xxhdpi": "480", "xxxhdpi": "640"}
+
+
+def link_devices_xml():
+    """Puts devices.xml where avdmanager reads screens from.
+
+    A link keeps one source. A file that is already there, for example from
+    Android Studio, is left alone.
+    """
+    target = Path.home() / ".android" / "devices.xml"
+    if target.exists():
+        return
+    if target.is_symlink():
+        target.unlink()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.symlink_to(HOME / "devices.xml")
+    print("Device description linked: ~/.android/devices.xml -> %s"
+          % (HOME / "devices.xml"))
+
+
+def device_listed(device):
+    done = subprocess.run([str(AVDMANAGER), "list", "device"],
+                          capture_output=True, text=True, env=sdk_env())
+    return '"%s"' % device in done.stdout
+
+
+def device_value(device, name):
+    """One value from the block of this device in devices.xml."""
+    try:
+        text = (HOME / "devices.xml").read_text()
+    except OSError:
+        return ""
+    start = text.find("<d:id>%s</d:id>" % device)
+    if start < 0:
+        return ""
+    end = text.find("</d:device>", start)
+    found = re.search(r"<d:%s>([^<]*)" % re.escape(name),
+                      text[start:end if end > 0 else None])
+    return found.group(1).strip() if found else ""
+
+
+def density_number(raw):
+    """xxhdpi and its relatives as the number config.ini carries."""
+    if raw in DENSITIES:
+        return DENSITIES[raw]
+    return raw[:-3] if raw.endswith("dpi") else raw
+
+
+def config_lines(path):
+    return [CONFIG_LINE.sub(r"\1=", line) for line in path.read_text().splitlines()]
+
+
+def set_value(lines, key, value):
+    prefix = key + "="
+    old = next((line[len(prefix):] for line in lines if line.startswith(prefix)), None)
+    if old == value:
+        return
+    if old is None:
+        lines.append(prefix + value)
+        old = "missing"
+    else:
+        lines[:] = [prefix + value if line.startswith(prefix) else line
+                    for line in lines]
+    print("  %s: %s -> %s" % (key, old, value))
+
+
+def verify(config, row, guest):
+    """Reads config.ini back and compares thirteen values with the template.
+
+    Without this a run only says the tools ran, not that they did what was
+    asked. Exactly that swallowed three values on the first attempt.
+    """
+    # Screen and density come from devices.xml and not from a literal, or a
+    # tablet would later be checked against the values of the phone.
+    store = "yes" if row["tag"] == "google_apis_playstore" else "no"
+    expected = [
+        "abi.type=" + row["abi"],
+        "PlayStore.enabled=" + store,
+        "firstboot.bootFromDownloadableSnapshot=no",
+        "firstboot.bootFromLocalSnapshot=no",
+        "firstboot.saveToLocalSnapshot=no",
+        "hw.camera.front=emulated",
+        "hw.device.name=" + row["device"],
+        "hw.lcd.density=" + density_number(device_value(row["device"], "pixel-density")),
+        "hw.lcd.height=" + device_value(row["device"], "y-dimension"),
+        "hw.lcd.width=" + device_value(row["device"], "x-dimension"),
+        "hw.ramSize=" + row["ram"],
+        "image.sysdir.1=system-images/android-%s/%s/%s/" % (row["api"], row["tag"], row["abi"]),
+        "tag.id=" + row["tag"],
+    ]
+    lines = config_lines(config)
+    errors = 0
+    print()
+    print("Verifying against config.ini:")
+    for line in expected:
+        if line in lines:
+            print("  ok      " + line)
+            continue
+        key = line.split("=", 1)[0] + "="
+        found = next((l for l in lines if l.startswith(key)), "")
+        print("  MISSING %s   (found: %s)" % (line, found or "nothing"))
+        errors += 1
+    print()
+    if errors:
+        print("%d values do not match. %s is not the guest we wanted." % (errors, guest))
+        return False
+    print("All values match. %s is at %s" % (guest, guest_folder(guest)))
+    print()
+    return True
+
+
+def create_one(row, guest, recreate):
+    """Creates one guest and pins the values avdmanager drops or overrides.
+
+    Measured on 2026-09-20: avdmanager silently dropped three values of the
+    device description and set three more so that a run was not repeatable.
+    """
+    # avdmanager accepts a name it cannot find again later, because the name
+    # also becomes a folder.
+    if not GUEST_NAME.match(guest):
+        problem("'%s' is not a usable guest name.\n"
+                "       Letters, digits, dot, underscore and dash only." % guest)
+        return False
+
+    print("=" * 63)
+    for label, value in (("Guest", guest), ("Template", row["name"]),
+                         ("Device", row["device"]), ("Image", row["image"]),
+                         ("Memory", row["ram"] + " MB")):
+        print("%-10s%s" % (label, value))
+    print("=" * 63)
+
+    if not device_listed(row["device"]):
+        problem("device %s is not listed in devices.xml." % row["device"])
+        return False
+
+    images = SDK / "system-images" / ("android-" + row["api"]) / row["tag"] / row["abi"]
+    if not images.is_dir():
+        print("The system image is missing. Fetching it:")
+        print('  sdkmanager "%s"' % row["image"])
+        if run_tool([SDKMANAGER, row["image"]], answer="y\n" * 20, quiet=True) != 0 \
+                or not images.is_dir():
+            problem("sdkmanager did not fetch %s." % row["image"])
+            return False
+
+    # A running emulator rewrites config.ini at start, so whatever is written
+    # now would be gone by the next start at the latest.
+    if running_pid(guest):
+        problem("%s is running right now. Stop it first, or the change will be lost."
+                % guest)
+        return False
+
+    folder = guest_folder(guest)
+    config = folder / "config.ini"
+    if recreate and folder.is_dir():
+        print("Deleting existing guest %s" % guest)
+        if run_tool([AVDMANAGER, "delete", "avd", "-n", guest]) != 0:
+            problem("avdmanager did not delete %s." % guest)
+            return False
+
+    if folder.is_dir():
+        print("%s already exists, only updating the values" % guest)
+    else:
+        # Measured on 2026-09-24: when ANDROID_AVD_HOME does not exist yet,
+        # avdmanager writes to ~/.android/avd without a word.
+        AVD.mkdir(parents=True, exist_ok=True)
+        command = [AVDMANAGER, "create", "avd", "-n", guest,
+                   "-k", row["image"], "-d", row["device"]]
+        if run_tool(command, answer="no\n") != 0:
+            problem("avdmanager could not create %s." % guest)
+            return False
+    if not config.is_file():
+        stray = Path.home() / ".android" / "avd" / (guest + ".avd")
+        problem("avdmanager reported success, but %s is missing.%s" % (config, (
+            "\n       It landed in %s instead, so avdmanager did not"
+            "\n       use ANDROID_AVD_HOME=%s." % (stray, AVD)) if stray.is_dir() else ""))
+        return False
+
+    # config.ini is rewritten by the emulator at every start, so an extra key
+    # there would not survive. A file of its own does.
+    (folder / "abgal-template").write_text(row["name"] + "\n")
+
+    # Value                                   created  set       reason
+    # PlayStore.enabled                       no       yes       only the store template
+    # hw.ramSize                              2G       from conf devices.xml is overridden here
+    # hw.camera.front                         none     emulated  devices.xml describes one
+    # firstboot.bootFromDownloadableSnapshot  yes      no        would fetch state from the network
+    # firstboot.bootFromLocalSnapshot         yes      no        a run must not depend on the last
+    # firstboot.saveToLocalSnapshot           yes      no        the same in the other direction
+    lines = config_lines(config)
+    print("Updating the values:")
+    if row["tag"] == "google_apis_playstore":
+        set_value(lines, "PlayStore.enabled", "yes")
+    set_value(lines, "hw.ramSize", row["ram"])
+    set_value(lines, "hw.camera.front", "emulated")
+    set_value(lines, "firstboot.bootFromDownloadableSnapshot", "no")
+    set_value(lines, "firstboot.bootFromLocalSnapshot", "no")
+    set_value(lines, "firstboot.saveToLocalSnapshot", "no")
+    config.write_text("\n".join(lines) + "\n")
+
+    return verify(config, row, guest)
 
 
 # ------------------------------------------------------------------ commands
@@ -390,6 +618,10 @@ def cmd_create(args):
         )
     if args.count < 1:
         fail("--count has to be at least 1.")
+    if not AVDMANAGER.is_file():
+        fail("avdmanager is not under %s.\n"
+             "       The command line tools belong in sdk/cmdline-tools/latest."
+             % AVDMANAGER.parent)
 
     base = args.after or args.template
     if args.count == 1:
@@ -401,12 +633,13 @@ def cmd_create(args):
         width = max(2, len(str(args.count)))
         names = ["%s-%0*d" % (base, width, n) for n in range(1, args.count + 1)]
 
-    extra = {"ABGAL_AVD_RECREATE": "1"} if args.recreate else None
+    row = next(r for r in template_rows() if r["name"] == args.template)
+    link_devices_xml()
     failed = []
     for number, name in enumerate(names, 1):
         if len(names) > 1:
             print("[%d of %d]" % (number, len(names)))
-        if run_script("create-avd.sh", args.template, name, env_extra=extra) != 0:
+        if not create_one(row, name, args.recreate):
             failed.append(name)
 
     if failed:
@@ -446,9 +679,8 @@ def cmd_delete(args):
             print("Nothing was deleted.")
             return 1
 
-    manager = SDK / "cmdline-tools" / "latest" / "bin" / "avdmanager"
-    done = subprocess.run([str(manager), "delete", "avd", "-n", name], env=sdk_env())
-    if done.returncode != 0 or guest_folder(name).exists():
+    if run_tool([AVDMANAGER, "delete", "avd", "-n", name]) != 0 \
+            or guest_folder(name).exists():
         fail("avdmanager did not remove %s." % name)
 
     # The logs stay. They are the record of what this guest did, they cost
