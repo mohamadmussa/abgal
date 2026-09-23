@@ -49,6 +49,10 @@ QEMU = "qemu-system-x86"
 # 9780 MB between them, and a single one settled at 2415 MB.
 OVERHEAD_MB = 900
 
+# How long an orderly shutdown may take before the signals start. Stop and
+# delete share the number so that --force deletes the same way stop does.
+GRACE_SECONDS = 20
+
 # What the machine keeps for itself. A guest does not reach its full size at
 # boot, it grows for minutes afterwards: measured on 2026-09-22, the same
 # guest left 6875 MB free right after booting and 6106 MB a minute later.
@@ -649,23 +653,36 @@ def stop_one(name, serial, grace):
     return False
 
 
-def cmd_stop(args):
-    if args.name:
-        targets = [resolve(args.name)]
-    else:
-        targets = [g for g, _, _ in guests() if running_pid(g) is not None]
-
-    if not targets:
-        print("Nothing is running.")
-        return 0
-
-    names = {}
+def running_serials():
+    """Maps guest name to adb serial for every guest attached right now."""
+    found = {}
     for serial, state in attached().items():
         if state == "unauthorized":
+            # The serial answers but the console refused the token, so the
+            # guest behind it cannot be asked for its name.
             continue
-        found = serial_name(serial)
-        if found:
-            names[found] = serial
+        name = serial_name(serial)
+        if name:
+            found[name] = serial
+    return found
+
+
+def cmd_stop(args):
+    # Without a name this prints the help instead of stopping everything, the
+    # same rule start follows. A stop that takes down thirty guests because a
+    # flag was forgotten is the one mistake this program must not make easy.
+    if not args.name:
+        args.parser.print_help()
+        print()
+        live = [g for g, _, _ in guests() if running_pid(g) is not None]
+        if live:
+            print("Running right now: %s" % ", ".join(live))
+        else:
+            print("Nothing is running.")
+        return 1
+
+    targets = [resolve(n) for n in args.name]
+    names = running_serials()
 
     print("Stopping %d guest(s):" % len(targets))
     # Every target is tried, and only then is the result judged. A short
@@ -791,11 +808,12 @@ def build_parser():
     start.add_argument("--timeout", type=int, default=300, metavar="SECONDS")
     start.set_defaults(run=cmd_start, parser=start)
 
-    stop = subs.add_parser("stop", help="stop one guest, or every running guest")
-    stop.add_argument("-n", "--name", help="the guest to stop. Without it, all of them")
-    stop.add_argument("--grace", type=int, default=20, metavar="SECONDS",
+    stop = subs.add_parser("stop", help="stop guests, one after another")
+    stop.add_argument("-n", "--name", metavar="GUEST", action="append",
+                      help="a guest to stop, by name or by id. Repeatable")
+    stop.add_argument("--grace", type=int, default=GRACE_SECONDS, metavar="SECONDS",
                       help="how long to wait for an orderly shutdown")
-    stop.set_defaults(run=cmd_stop)
+    stop.set_defaults(run=cmd_stop, parser=stop)
 
     status = subs.add_parser("status", help="what is on disk and what is running")
     status.add_argument("-n", "--name", metavar="GUEST",
