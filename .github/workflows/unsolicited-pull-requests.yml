@@ -90,7 +90,7 @@ jobs:
           **Please open an issue.** Describe what you ran into, or what you
           want to change. You will get an answer, and if the answer is yes, you
           can reopen this pull request or send a new one that refers to the
-          issue. Nothing you wrote is wasted.
+          issue with `#` and its number. Nothing you wrote is wasted.
 
           The rules are in
           [CONTRIBUTING.md](https://github.com/mohamadmussa/abgal/blob/main/CONTRIBUTING.md),
