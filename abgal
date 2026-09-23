@@ -556,6 +556,12 @@ def start_one(args, name):
     field("Log", logfile)
     print()
 
+    # The previous run is kept as .1, the same two generations the watch keeps.
+    # The failure message below quotes the last lines of this file, so it has
+    # to hold this start and not the one before it.
+    if logfile.exists():
+        logfile.replace(folder / "emulator.log.1")
+
     with open(logfile, "wb") as stream:
         subprocess.Popen(
             command, stdout=stream, stderr=subprocess.STDOUT,
