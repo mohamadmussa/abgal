@@ -2,4 +2,11 @@
 # Runs before every commit. Activate once after cloning:
 #   git config core.hooksPath .githooks
 set -euo pipefail
-exec python3 "$(git rev-parse --show-toplevel)/tools/check-private.py" --staged
+root="$(git rev-parse --show-toplevel)"
+python3 "$root/tools/check-private.py" --staged
+
+# Checks a contributor keeps for their own machine. tools/local/ is ignored,
+# so the file never reaches the repository and is skipped when it is missing.
+if [ -x "$root/tools/local/pre-commit" ]; then
+  "$root/tools/local/pre-commit"
+fi
