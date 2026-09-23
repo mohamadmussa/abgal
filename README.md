@@ -51,18 +51,24 @@ A session that was open before the `usermod` does not know the group yet.
 SDK included. `sdk/` is ignored by git. One command for this step is planned in
 [#11](https://github.com/mohamadmussa/abgal/issues/11); until then it is by hand.
 
-Download *Command line tools only* for Linux from
+Download *Command line tools only* for Linux, version 23.0 or newer, from
 [developer.android.com/studio](https://developer.android.com/studio#command-line-tools-only), then:
 
 ```bash
 mkdir -p sdk/cmdline-tools
 unzip ~/Downloads/commandlinetools-linux-*_latest.zip -d sdk/cmdline-tools
 mv sdk/cmdline-tools/cmdline-tools sdk/cmdline-tools/latest
-yes | sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=sdk --licenses
-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=sdk platform-tools emulator
+sdk/cmdline-tools/latest/bin/android --no-metrics --sdk=sdk sdk install platform-tools emulator
 ```
 
-The system image for a template is fetched on the first `create` that needs it.
+`android` is the Android CLI, which replaces `sdkmanager` from 23.0 on. Without
+`--no-metrics` it sends usage data to Google; `sdkmanager` does the same and
+has no switch for it. The licenses are accepted by the install itself. The
+first call puts the CLI into `~/.android/`, see
+[What AbGal is not](#what-abgal-is-not).
+
+The system image for a template is fetched on the first `create` that needs
+it, the same way and with `--no-metrics`.
 
 **3. Create a guest and start it.**
 
@@ -143,9 +149,11 @@ guest swaps and an app takes twice as long to start.
   plain `adb` then do the testing.
 - **Not for physical devices.** It creates and runs emulators only.
 - **Not completely self contained yet.** SDK, guests and logs live in the
-  clone. The SDK tools still keep small state files in your home folder:
-  `~/.android/` (adb key, feature flags, modem state per port) and
-  `~/.emulator_console_auth_token`. `~/.android/devices.xml` is a link to the
+  clone. The SDK tools still keep files in your home folder: the Android CLI
+  in `~/.android/bin/` and `~/.android/cli/`, about 250 MB with its own Java
+  runtime, then small state files in `~/.android/` (adb key, feature flags,
+  modem state per port) and `~/.emulator_console_auth_token`.
+  `~/.android/devices.xml` is a link to the
   file in the clone, because `avdmanager` reads screen descriptions only from
   there. If that file already exists, for example from Android Studio, AbGal
   leaves it alone, and `create` reports the device as not listed unless that
