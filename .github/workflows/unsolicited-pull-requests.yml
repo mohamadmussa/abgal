@@ -1,0 +1,84 @@
+# Closes a pull request that no issue asked for, with a reason and a way
+# forward. pull_request_target gives a token that can comment on a fork pull
+# request, so nothing from the pull request is checked out or run.
+name: unsolicited pull requests
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  issues: read
+  pull-requests: write
+
+jobs:
+  triage:
+    # Insiders are skipped, so the marker is the only way to run this on a
+    # maintainer's own pull request and prove it. A stranger already passes.
+    if: >-
+      contains(github.event.pull_request.title, '[triage-selftest]') ||
+      (github.event.pull_request.author_association != 'OWNER' &&
+       github.event.pull_request.author_association != 'MEMBER' &&
+       github.event.pull_request.author_association != 'COLLABORATOR')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close it unless an issue asked for it
+        # Title and body are written by a stranger, so they arrive through env
+        # and are never pasted into the script with ${{ }}.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+
+          # Every #123 in the title or the body, deduplicated.
+          refs=$(printf '%s\n%s\n' "$TITLE" "$BODY" \
+                 | grep -oE '#[0-9]+' | tr -d '#' | sort -u || true)
+
+          for n in $refs; do
+            # Only a 404 means "no such issue". Any other failure stops the job
+            # red, because closing a correct pull request is the worse mistake.
+            if kind=$(gh api "repos/$REPO/issues/$n" \
+                        --jq 'if .pull_request then "pr" else "issue" end' \
+                        2>err.txt); then
+              :
+            elif grep -q 'HTTP 404' err.txt; then
+              kind=none
+            else
+              cat err.txt >&2
+              echo "Could not look up #$n. Leaving pull request #$NUMBER open."
+              exit 1
+            fi
+            if [ "$kind" = "issue" ]; then
+              echo "Pull request #$NUMBER refers to issue #$n. Nothing to do."
+              exit 0
+            fi
+          done
+
+          echo "Pull request #$NUMBER refers to no issue. Closing."
+
+          cat > message.md <<'EOF'
+          Thank you for taking the time to write this.
+
+          AbGal asks for an issue before a pull request, and this one does not
+          refer to any. That is why it is being closed, and it is not a
+          judgement on the code. It is the project being honest about its size:
+          one maintainer, no review capacity on standby, and no way to promise
+          that a change written without warning can be taken.
+
+          **Please open an issue.** Describe what you ran into, or what you
+          want to change. You will get an answer, and if the answer is yes, you
+          can reopen this pull request or send a new one that refers to the
+          issue with `#` and its number. Nothing you wrote is wasted.
+
+          The rules are in
+          [CONTRIBUTING.md](https://github.com/mohamadmussa/abgal/blob/main/CONTRIBUTING.md),
+          and all of them together are shorter than this repository's shortest
+          script.
+          EOF
+
+          gh pr comment "$NUMBER" --repo "$REPO" --body-file message.md
+          gh pr close "$NUMBER" --repo "$REPO"
