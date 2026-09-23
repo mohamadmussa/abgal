@@ -212,3 +212,8 @@ Every line goes to `logs/<guest>/watch.log`, and the previous run is kept as
 Set them in front of `abgal start`, and the watch it starts inherits them.
 To see the stop work without heating the machine, set `ABGAL_TEMP_STOP` below
 the current temperature.
+
+`start` reads these values before the first guest starts and refuses one that
+is not a whole number. Two seconds after starting a watch it checks that the
+watch is still alive. If it is not, `start` says so and ends with exit code 1,
+and the guest keeps running without a watch.

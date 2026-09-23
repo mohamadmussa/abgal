@@ -84,6 +84,26 @@ The guest runs but Android has not finished booting. On a slow machine with
 `--timeout 600`, or look at the guest with
 `sdk/platform-tools/adb -s emulator-5554 logcat`.
 
+## The temperature watch did not start
+
+```text
+ERROR: ABGAL_TEMP_STOP=9x is not a whole number.
+```
+
+One of the `ABGAL_TEMP_*` variables holds something other than digits. No
+guest was started. Fix or unset the variable and start again.
+
+```text
+ERROR: the temperature watch for dev ended at once with exit code 2.
+```
+
+The guest runs, but nothing protects it from overheating. The message names
+the watch's log, and its last line says why. Exit code 2 with
+`WATCH ABORTED: no temperature measurable` means neither the `x86_pkg_temp`
+zone nor `sensors` gave a value. On Debian `sensors` comes from the
+`lm-sensors` package, and the watch reads its line `Package id 0`. Stop the
+guest with `abgal stop -n dev` before you fix it.
+
 ## A guest stopped by itself
 
 Look at the temperature watch:
