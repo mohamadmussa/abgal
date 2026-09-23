@@ -877,8 +877,14 @@ def cmd_start(args):
                  "       separate calls, or let the emulator pick." % len(names))
 
     # Before any guest runs, so a bad value stops the start and not the watch.
+    # A watch that cannot measure may take sensors' full ten seconds to die,
+    # long after start said it runs, so the reading is taken here as well.
     if not args.no_watch:
         watch_settings()
+        if temperature(thermal_zone()) is None:
+            fail("no processor temperature measurable, so no guest could be watched.\n"
+                 "       Neither the x86_pkg_temp zone nor sensors gave a value.\n"
+                 "       Start with --no-watch to run without the watch.")
 
     # One after another, never at the same time. Each guest is given the whole
     # sequence of its own start, including its own memory check, and the one
