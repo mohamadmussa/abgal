@@ -20,6 +20,7 @@ on:
     types: [opened, reopened]
 
 permissions:
+  issues: read
   pull-requests: write
 
 jobs:
@@ -56,9 +57,19 @@ jobs:
             # A number that resolves to a pull request is not an issue, so a
             # pull request pointing only at another pull request is still
             # unsolicited.
-            kind=$(gh api "repos/$REPO/issues/$n" \
-                     --jq 'if .pull_request then "pr" else "issue" end' \
-                     2>/dev/null || echo none)
+            # Only a 404 means "no such issue". Any other failure stops the job
+            # red, because closing a correct pull request is the worse mistake.
+            if kind=$(gh api "repos/$REPO/issues/$n" \
+                        --jq 'if .pull_request then "pr" else "issue" end' \
+                        2>err.txt); then
+              :
+            elif grep -q 'HTTP 404' err.txt; then
+              kind=none
+            else
+              cat err.txt >&2
+              echo "Could not look up #$n. Leaving pull request #$NUMBER open."
+              exit 1
+            fi
             if [ "$kind" = "issue" ]; then
               echo "Pull request #$NUMBER refers to issue #$n. Nothing to do."
               exit 0
