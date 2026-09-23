@@ -1043,7 +1043,9 @@ def env_number(name, default):
     raw = os.environ.get(name, "")
     if not raw:
         return default
-    if not raw.isdigit():
+    # isdigit alone also takes a superscript two, which int() then refuses
+    # with a traceback.
+    if not (raw.isascii() and raw.isdigit()):
         fail("%s=%s is not a whole number." % (name, raw))
     return int(raw)
 
