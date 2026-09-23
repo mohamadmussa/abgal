@@ -1,0 +1,84 @@
+# "Issue first, then pull request" is the first rule in CONTRIBUTING.md, and a
+# rule nobody enforces is a wish. This closes a pull request that no issue
+# asked for, with a reason and a way forward.
+#
+# Two deliberate choices about safety:
+#
+# pull_request_target is used because a pull request from a fork gets a
+# read-only token, and this job has to write a comment. That trigger runs with
+# write access to this repository, so the job checks out nothing and runs no
+# code from the pull request. It reads two fields and posts a comment.
+#
+# The title and the body are written by a stranger. They are passed through
+# env, never interpolated into the shell command, because ${{ }} pastes text
+# straight into the script and a title can be written to end one command and
+# start another.
+name: unsolicited pull requests
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  triage:
+    # Anyone who can already push here is not a stranger.
+    if: >-
+      github.event.pull_request.author_association != 'OWNER' &&
+      github.event.pull_request.author_association != 'MEMBER' &&
+      github.event.pull_request.author_association != 'COLLABORATOR'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close it unless an issue asked for it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+
+          # Every #123 in the title or the body, deduplicated.
+          refs=$(printf '%s\n%s\n' "$TITLE" "$BODY" \
+                 | grep -oE '#[0-9]+' | tr -d '#' | sort -u || true)
+
+          for n in $refs; do
+            # A number that resolves to a pull request is not an issue, so a
+            # pull request pointing only at another pull request is still
+            # unsolicited.
+            kind=$(gh api "repos/$REPO/issues/$n" \
+                     --jq 'if .pull_request then "pr" else "issue" end' \
+                     2>/dev/null || echo none)
+            if [ "$kind" = "issue" ]; then
+              echo "Pull request #$NUMBER refers to issue #$n. Nothing to do."
+              exit 0
+            fi
+          done
+
+          echo "Pull request #$NUMBER refers to no issue. Closing."
+
+          cat > message.md <<'EOF'
+          Thank you for taking the time to write this.
+
+          AbGal asks for an issue before a pull request, and this one does not
+          refer to any. That is why it is being closed, and it is not a
+          judgement on the code. It is the project being honest about its size:
+          one maintainer, no review capacity on standby, and no way to promise
+          that a change written without warning can be taken.
+
+          **Please open an issue.** Describe what you ran into, or what you
+          want to change. You will get an answer, and if the answer is yes, you
+          can reopen this pull request or send a new one that refers to the
+          issue. Nothing you wrote is wasted.
+
+          The rules are in
+          [CONTRIBUTING.md](https://github.com/mohamadmussa/abgal/blob/main/CONTRIBUTING.md),
+          and all of them together are shorter than this repository's shortest
+          script.
+          EOF
+
+          gh pr comment "$NUMBER" --repo "$REPO" --body-file message.md
+          gh pr close "$NUMBER" --repo "$REPO"
