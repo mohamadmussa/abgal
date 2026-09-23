@@ -847,6 +847,11 @@ def build_parser():
 
 
 def main():
+    # Into a pipe or a log file Python buffers by the block while the tools it
+    # calls write straight through, so a start ends up in the file after the
+    # line that reports it finished. A log whose order lies is worse than none.
+    sys.stdout.reconfigure(line_buffering=True)
+
     parser = build_parser()
     args = parser.parse_args()
     if not getattr(args, "run", None):
