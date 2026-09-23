@@ -13,6 +13,7 @@ machine outside it.
   abgal start -n <a> -n <b>           start them one after another
   abgal status                        what is on disk and what is running
   abgal stop -n <guest>               stop that guest
+  abgal watch -n <guest>              the temperature watch start runs by itself
 
 Only the Python standard library is used. There is nothing to install and
 nothing to package: the file is the program.
@@ -34,9 +35,10 @@ HOME = Path(__file__).resolve().parent
 SDK = HOME / "sdk"
 AVD = HOME / "avd"
 LOGS = HOME / "logs"
-BIN = HOME / "bin"
 ADB = SDK / "platform-tools" / "adb"
 EMULATOR = SDK / "emulator" / "emulator"
+AVDMANAGER = SDK / "cmdline-tools" / "latest" / "bin" / "avdmanager"
+SDKMANAGER = SDK / "cmdline-tools" / "latest" / "bin" / "sdkmanager"
 
 # The kernel truncates a process name to fifteen characters, and the binary
 # is called qemu-system-x86_64. This is the name that actually appears.
@@ -169,8 +171,11 @@ def available_mb():
 # -------------------------------------------------------------------- guests
 
 
-def templates():
-    """The templates in devices.conf, as name and note."""
+TEMPLATE_FIELDS = ("name", "device", "api", "tag", "abi", "ram", "note")
+
+
+def template_rows():
+    """Every line of devices.conf, as a dict of its seven columns."""
     found = []
     try:
         text = (HOME / "devices.conf").read_text()
@@ -181,9 +186,17 @@ def templates():
         if not line or line.startswith("#"):
             continue
         fields = [f.strip() for f in line.split("|")]
-        if len(fields) >= 7:
-            found.append((fields[0], fields[6]))
+        if len(fields) >= len(TEMPLATE_FIELDS):
+            row = dict(zip(TEMPLATE_FIELDS, fields))
+            row["image"] = "system-images;android-%s;%s;%s" % (
+                row["api"], row["tag"], row["abi"])
+            found.append(row)
     return found
+
+
+def templates():
+    """The templates in devices.conf, as name and note."""
+    return [(row["name"], row["note"]) for row in template_rows()]
 
 
 def guest_id(folder):
@@ -333,19 +346,234 @@ def field(label, value):
     print("  %-10s %s" % (label, value))
 
 
-def run_script(script, *args, env_extra=None):
-    """Runs one of the scripts in bin/ and passes its output straight through.
+def run_tool(command, answer="", quiet=False):
+    """Runs avdmanager or sdkmanager and answers its questions on stdin.
 
-    Our own output is flushed first. The script writes to the same terminal
-    without a buffer in between, so anything still held back here would
-    appear after it and describe the wrong step.
+    The answers are written from here instead of piped from "yes". A tool
+    that stops reading early then only closes a pipe, where "yes | tool"
+    under pipefail ended with 141 although the tool had succeeded.
     """
+    # The tool writes to the same terminal without our buffer in between, so
+    # anything still held back here would appear after it.
     sys.stdout.flush()
-    env = sdk_env()
-    if env_extra:
-        env.update(env_extra)
-    command = ["bash", str(BIN / script)] + [str(a) for a in args]
-    return subprocess.run(command, env=env).returncode
+    done = subprocess.run(
+        [str(c) for c in command], input=answer, text=True, env=sdk_env(),
+        stdout=subprocess.DEVNULL if quiet else None,
+    )
+    return done.returncode
+
+
+# -------------------------------------------------------------------- create
+
+
+GUEST_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+
+# avdmanager writes "key=value", the emulator rewrites the same line as
+# "key = value" at every start. Measured on 2026-09-20: 139 of 144 lines after
+# one start. Everything is brought back to the first spelling before a compare.
+CONFIG_LINE = re.compile(r"^([A-Za-z0-9._]+)\s*=\s*")
+
+DENSITIES = {"ldpi": "120", "mdpi": "160", "tvdpi": "213", "hdpi": "240",
+             "xhdpi": "320", "xxhdpi": "480", "xxxhdpi": "640"}
+
+
+def link_devices_xml():
+    """Puts devices.xml where avdmanager reads screens from.
+
+    A link keeps one source. A file that is already there, for example from
+    Android Studio, is left alone.
+    """
+    target = Path.home() / ".android" / "devices.xml"
+    if target.exists():
+        return
+    if target.is_symlink():
+        target.unlink()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.symlink_to(HOME / "devices.xml")
+    print("Device description linked: ~/.android/devices.xml -> %s"
+          % (HOME / "devices.xml"))
+
+
+def device_listed(device):
+    done = subprocess.run([str(AVDMANAGER), "list", "device"],
+                          capture_output=True, text=True, env=sdk_env())
+    return '"%s"' % device in done.stdout
+
+
+def device_value(device, name):
+    """One value from the block of this device in devices.xml."""
+    try:
+        text = (HOME / "devices.xml").read_text()
+    except OSError:
+        return ""
+    start = text.find("<d:id>%s</d:id>" % device)
+    if start < 0:
+        return ""
+    end = text.find("</d:device>", start)
+    found = re.search(r"<d:%s>([^<]*)" % re.escape(name),
+                      text[start:end if end > 0 else None])
+    return found.group(1).strip() if found else ""
+
+
+def density_number(raw):
+    """xxhdpi and its relatives as the number config.ini carries."""
+    if raw in DENSITIES:
+        return DENSITIES[raw]
+    return raw[:-3] if raw.endswith("dpi") else raw
+
+
+def config_lines(path):
+    return [CONFIG_LINE.sub(r"\1=", line) for line in path.read_text().splitlines()]
+
+
+def set_value(lines, key, value):
+    prefix = key + "="
+    old = next((line[len(prefix):] for line in lines if line.startswith(prefix)), None)
+    if old == value:
+        return
+    if old is None:
+        lines.append(prefix + value)
+        old = "missing"
+    else:
+        lines[:] = [prefix + value if line.startswith(prefix) else line
+                    for line in lines]
+    print("  %s: %s -> %s" % (key, old, value))
+
+
+def verify(config, row, guest):
+    """Reads config.ini back and compares thirteen values with the template.
+
+    Without this a run only says the tools ran, not that they did what was
+    asked. Exactly that swallowed three values on the first attempt.
+    """
+    # Screen and density come from devices.xml and not from a literal, or a
+    # tablet would later be checked against the values of the phone.
+    store = "yes" if row["tag"] == "google_apis_playstore" else "no"
+    expected = [
+        "abi.type=" + row["abi"],
+        "PlayStore.enabled=" + store,
+        "firstboot.bootFromDownloadableSnapshot=no",
+        "firstboot.bootFromLocalSnapshot=no",
+        "firstboot.saveToLocalSnapshot=no",
+        "hw.camera.front=emulated",
+        "hw.device.name=" + row["device"],
+        "hw.lcd.density=" + density_number(device_value(row["device"], "pixel-density")),
+        "hw.lcd.height=" + device_value(row["device"], "y-dimension"),
+        "hw.lcd.width=" + device_value(row["device"], "x-dimension"),
+        "hw.ramSize=" + row["ram"],
+        "image.sysdir.1=system-images/android-%s/%s/%s/" % (row["api"], row["tag"], row["abi"]),
+        "tag.id=" + row["tag"],
+    ]
+    lines = config_lines(config)
+    errors = 0
+    print()
+    print("Verifying against config.ini:")
+    for line in expected:
+        if line in lines:
+            print("  ok      " + line)
+            continue
+        key = line.split("=", 1)[0] + "="
+        found = next((l for l in lines if l.startswith(key)), "")
+        print("  MISSING %s   (found: %s)" % (line, found or "nothing"))
+        errors += 1
+    print()
+    if errors:
+        print("%d values do not match. %s is not the guest we wanted." % (errors, guest))
+        return False
+    print("All values match. %s is at %s" % (guest, guest_folder(guest)))
+    print()
+    return True
+
+
+def create_one(row, guest, recreate):
+    """Creates one guest and pins the values avdmanager drops or overrides.
+
+    Measured on 2026-09-20: avdmanager silently dropped three values of the
+    device description and set three more so that a run was not repeatable.
+    """
+    # avdmanager accepts a name it cannot find again later, because the name
+    # also becomes a folder.
+    if not GUEST_NAME.match(guest):
+        problem("'%s' is not a usable guest name.\n"
+                "       Letters, digits, dot, underscore and dash only." % guest)
+        return False
+
+    print("=" * 63)
+    for label, value in (("Guest", guest), ("Template", row["name"]),
+                         ("Device", row["device"]), ("Image", row["image"]),
+                         ("Memory", row["ram"] + " MB")):
+        print("%-10s%s" % (label, value))
+    print("=" * 63)
+
+    if not device_listed(row["device"]):
+        problem("device %s is not listed in devices.xml." % row["device"])
+        return False
+
+    images = SDK / "system-images" / ("android-" + row["api"]) / row["tag"] / row["abi"]
+    if not images.is_dir():
+        print("The system image is missing. Fetching it:")
+        print('  sdkmanager "%s"' % row["image"])
+        if run_tool([SDKMANAGER, row["image"]], answer="y\n" * 20, quiet=True) != 0 \
+                or not images.is_dir():
+            problem("sdkmanager did not fetch %s." % row["image"])
+            return False
+
+    # A running emulator rewrites config.ini at start, so whatever is written
+    # now would be gone by the next start at the latest.
+    if running_pid(guest):
+        problem("%s is running right now. Stop it first, or the change will be lost."
+                % guest)
+        return False
+
+    folder = guest_folder(guest)
+    config = folder / "config.ini"
+    if recreate and folder.is_dir():
+        print("Deleting existing guest %s" % guest)
+        if run_tool([AVDMANAGER, "delete", "avd", "-n", guest]) != 0:
+            problem("avdmanager did not delete %s." % guest)
+            return False
+
+    if folder.is_dir():
+        print("%s already exists, only updating the values" % guest)
+    else:
+        # Measured on 2026-09-24: when ANDROID_AVD_HOME does not exist yet,
+        # avdmanager writes to ~/.android/avd without a word.
+        AVD.mkdir(parents=True, exist_ok=True)
+        command = [AVDMANAGER, "create", "avd", "-n", guest,
+                   "-k", row["image"], "-d", row["device"]]
+        if run_tool(command, answer="no\n") != 0:
+            problem("avdmanager could not create %s." % guest)
+            return False
+    if not config.is_file():
+        stray = Path.home() / ".android" / "avd" / (guest + ".avd")
+        problem("avdmanager reported success, but %s is missing.%s" % (config, (
+            "\n       It landed in %s instead, so avdmanager did not"
+            "\n       use ANDROID_AVD_HOME=%s." % (stray, AVD)) if stray.is_dir() else ""))
+        return False
+
+    # config.ini is rewritten by the emulator at every start, so an extra key
+    # there would not survive. A file of its own does.
+    (folder / "abgal-template").write_text(row["name"] + "\n")
+
+    # Value                                   created  set       reason
+    # PlayStore.enabled                       no       yes       only the store template
+    # hw.ramSize                              2G       from conf devices.xml is overridden here
+    # hw.camera.front                         none     emulated  devices.xml describes one
+    # firstboot.bootFromDownloadableSnapshot  yes      no        would fetch state from the network
+    # firstboot.bootFromLocalSnapshot         yes      no        a run must not depend on the last
+    # firstboot.saveToLocalSnapshot           yes      no        the same in the other direction
+    lines = config_lines(config)
+    print("Updating the values:")
+    if row["tag"] == "google_apis_playstore":
+        set_value(lines, "PlayStore.enabled", "yes")
+    set_value(lines, "hw.ramSize", row["ram"])
+    set_value(lines, "hw.camera.front", "emulated")
+    set_value(lines, "firstboot.bootFromDownloadableSnapshot", "no")
+    set_value(lines, "firstboot.bootFromLocalSnapshot", "no")
+    set_value(lines, "firstboot.saveToLocalSnapshot", "no")
+    config.write_text("\n".join(lines) + "\n")
+
+    return verify(config, row, guest)
 
 
 # ------------------------------------------------------------------ commands
@@ -390,6 +618,10 @@ def cmd_create(args):
         )
     if args.count < 1:
         fail("--count has to be at least 1.")
+    if not AVDMANAGER.is_file():
+        fail("avdmanager is not under %s.\n"
+             "       The command line tools belong in sdk/cmdline-tools/latest."
+             % AVDMANAGER.parent)
 
     base = args.after or args.template
     if args.count == 1:
@@ -401,12 +633,13 @@ def cmd_create(args):
         width = max(2, len(str(args.count)))
         names = ["%s-%0*d" % (base, width, n) for n in range(1, args.count + 1)]
 
-    extra = {"ABGAL_AVD_RECREATE": "1"} if args.recreate else None
+    row = next(r for r in template_rows() if r["name"] == args.template)
+    link_devices_xml()
     failed = []
     for number, name in enumerate(names, 1):
         if len(names) > 1:
             print("[%d of %d]" % (number, len(names)))
-        if run_script("create-avd.sh", args.template, name, env_extra=extra) != 0:
+        if not create_one(row, name, args.recreate):
             failed.append(name)
 
     if failed:
@@ -446,9 +679,8 @@ def cmd_delete(args):
             print("Nothing was deleted.")
             return 1
 
-    manager = SDK / "cmdline-tools" / "latest" / "bin" / "avdmanager"
-    done = subprocess.run([str(manager), "delete", "avd", "-n", name], env=sdk_env())
-    if done.returncode != 0 or guest_folder(name).exists():
+    if run_tool([AVDMANAGER, "delete", "avd", "-n", name]) != 0 \
+            or guest_folder(name).exists():
         fail("avdmanager did not remove %s." % name)
 
     # The logs stay. They are the record of what this guest did, they cost
@@ -585,7 +817,7 @@ def start_one(args, name):
     # file away. Measured on 2026-09-22.
     if not args.no_watch:
         subprocess.Popen(
-            ["bash", str(BIN / "temperature-watch.sh"), name],
+            [sys.executable, str(Path(__file__).resolve()), "watch", "-n", name],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             cwd=str(HOME), env=sdk_env(), start_new_session=True,
         )
@@ -645,29 +877,29 @@ def cmd_start(args):
     return 0
 
 
-def stop_one(name, serial, grace):
+def stop_one(name, serial, grace, say=print):
     """The orderly way first, force only afterwards.
 
     A hard kill can damage the device image, and rebuilding that costs more
-    than the wait. The same three steps the temperature watch takes.
+    than the wait. The temperature watch stops a guest the same way.
     """
     if serial:
-        print("  %s: asking %s to shut down." % (name, serial))
+        say("  %s: asking %s to shut down." % (name, serial))
         adb("emu", "kill", serial=serial, timeout=20)
 
     deadline = time.time() + grace
     while time.time() < deadline:
         if running_pid(name) is None:
-            print("  %s: stopped." % name)
+            say("  %s: stopped." % name)
             return True
         time.sleep(1)
 
     for step, number in (("SIGTERM", signal.SIGTERM), ("SIGKILL", signal.SIGKILL)):
         pid = running_pid(name)
         if pid is None:
-            print("  %s: stopped." % name)
+            say("  %s: stopped." % name)
             return True
-        print("  %s: not responding, %s to pid %d." % (name, step, pid))
+        say("  %s: not responding, %s to pid %d." % (name, step, pid))
         try:
             os.kill(pid, number)
         except OSError:
@@ -675,9 +907,9 @@ def stop_one(name, serial, grace):
         time.sleep(10)
 
     if running_pid(name) is None:
-        print("  %s: stopped." % name)
+        say("  %s: stopped." % name)
         return True
-    print("  %s: still running. Nothing else this program can do." % name)
+    say("  %s: still running. Nothing else this program can do." % name)
     return False
 
 
@@ -773,6 +1005,159 @@ def cmd_status(args):
     return 0
 
 
+# --------------------------------------------------------------------- watch
+
+
+# A decision from 2026-09-20, not the manufacturer's values: the chip reports
+# high 84 C and crit 100 C. Idle already reached 86 C without one throttle
+# event, and the abort has to come before the hardware acts. See finding B14.
+TEMP_WARN = 88
+TEMP_STOP = 96
+
+
+def env_number(name, default):
+    raw = os.environ.get(name, "")
+    if not raw:
+        return default
+    if not raw.isdigit():
+        fail("%s=%s is not a whole number." % (name, raw))
+    return int(raw)
+
+
+def thermal_zone():
+    """The x86_pkg_temp zone, found by its type file.
+
+    A glob over all zones would also match acpitz, which gives no usable
+    value on this hardware.
+    """
+    for zone in sorted(Path("/sys/class/thermal").glob("thermal_zone*")):
+        try:
+            if (zone / "type").read_text().strip() == "x86_pkg_temp":
+                return zone / "temp"
+        except OSError:
+            continue
+    return None
+
+
+def temperature(zone):
+    """The package temperature in whole degrees, or None.
+
+    The file first, sensors second. Both were checked against each other on
+    2026-09-20 and agree except for rounding.
+    """
+    if zone:
+        try:
+            value = int(zone.read_text().strip()) // 1000
+            if value:
+                return value
+        except (OSError, ValueError):
+            pass
+    try:
+        out = subprocess.run(["sensors"], capture_output=True, text=True,
+                             timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    for line in out.splitlines():
+        if line.startswith("Package id 0"):
+            digits = re.match(r"\+?(\d+)", line.split()[3])
+            return int(digits.group(1)) if digits else None
+    return None
+
+
+def watched(name):
+    """The guests being watched right now, by name."""
+    found = []
+    for _, args in qemu_processes():
+        guest = args[args.index("-avd") + 1] if "-avd" in args[:-1] else None
+        if guest and (name is None or guest == name):
+            found.append(guest)
+    return found
+
+
+def cmd_watch(args):
+    # Without a name every guest is watched. With one, only that guest is
+    # stopped: a hot package concerns the whole socket, but one watch must not
+    # clear out every run on the machine.
+    name = resolve(args.name) if args.name else None
+    warn = env_number("ABGAL_TEMP_WARN", TEMP_WARN)
+    stop = env_number("ABGAL_TEMP_STOP", TEMP_STOP)
+    # A case without a screen gains ten degrees in fifteen seconds, so a
+    # threshold only works with sampling this fast.
+    interval = env_number("ABGAL_TEMP_INTERVAL", 2)
+    grace = env_number("ABGAL_TEMP_GRACE", GRACE_SECONDS)
+    warmup = env_number("ABGAL_TEMP_WARMUP", 120)
+
+    # One log per guest, so the lines of several runs do not interleave. The
+    # run before is kept as .1, which answers whether it was already hot.
+    default = LOGS / name / "watch.log" if name else LOGS / "watch.log"
+    log = Path(os.environ.get("ABGAL_TEMP_LOG") or default)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    if log.exists():
+        log.replace(log.with_name(log.name + ".1"))
+
+    def note(text):
+        line = "%s  %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), text)
+        print(line)
+        with log.open("a") as out:
+            out.write(line + "\n")
+
+    zone = thermal_zone()
+    note("Watch on. Warning from %d C, abort from %d C, every %d s.%s"
+         % (warn, stop, interval, " Guest: %s." % name if name else ""))
+    if zone is None:
+        note("Note: no x86_pkg_temp zone found, only sensors counts.")
+    if temperature(zone) is None:
+        note("WATCH ABORTED: no temperature measurable. Neither sensors nor x86_pkg_temp.")
+        return 2
+
+    # Started next to the emulator, the watch may be quicker than qemu.
+    waited = 0
+    while not watched(name):
+        if waited >= warmup:
+            note("After %d s no emulator has appeared. Watch off." % waited)
+            return 0
+        time.sleep(5)
+        waited += 5
+
+    warned, highest, blind = False, 0, 0
+    while True:
+        guests_now = watched(name)
+        if not guests_now:
+            note("No emulator left. Watch off. Highest value was %d C." % highest)
+            return 0
+
+        value = temperature(zone)
+        # A watch that measures nothing and keeps running fakes safety.
+        if value is None:
+            blind += 1
+            if blind >= 4:
+                note("WATCH ABORTED: no temperature measurable four times in a row. "
+                     "No longer watching.")
+                return 2
+            note("Warning: temperature not readable (%d of 4)." % blind)
+            time.sleep(interval)
+            continue
+        blind = 0
+        highest = max(highest, value)
+
+        if value >= stop:
+            note("ABORT at %d C, threshold %d. Stopping the emulator." % (value, stop))
+            serials = running_serials()
+            for guest in guests_now:
+                stop_one(guest, serials.get(guest), grace, say=note)
+            note("Stopped. Highest value was %d C." % highest)
+            return 1
+
+        if value >= warn and not warned:
+            note("WARNING at %d C, threshold %d. Run continues." % (value, warn))
+            warned = True
+        elif warned and value < warn - 3:
+            # Three degrees below the threshold, or the message flaps.
+            note("All clear at %d C." % value)
+            warned = False
+        time.sleep(interval)
+
+
 # --------------------------------------------------------------------- entry
 
 
@@ -854,6 +1239,11 @@ def build_parser():
     status.add_argument("-n", "--name", metavar="GUEST",
                         help="only this guest, by name or by id")
     status.set_defaults(run=cmd_status)
+
+    watch = subs.add_parser("watch", help="stop guests before the processor runs too hot")
+    watch.add_argument("-n", "--name", metavar="GUEST",
+                       help="only this guest, by name or by id. Without it, every guest")
+    watch.set_defaults(run=cmd_watch)
 
     return parser
 

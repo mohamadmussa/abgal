@@ -34,7 +34,7 @@ starts it anyway.
 
 AbGal runs on **Linux on x86_64 with KVM**. macOS and Windows are planned in
 [#13](https://github.com/mohamadmussa/abgal/issues/13). You need Python 3, tested
-with 3.11, and bash. AbGal itself uses only the Python standard library.
+with 3.11. AbGal itself uses only the Python standard library.
 
 **1. Clone and allow KVM.**
 
@@ -113,6 +113,7 @@ Run from the clone as `./abgal`, or put the clone on your `PATH`.
 | `abgal status` | What is on disk, what is running, and how much memory is left |
 | `abgal stop -n <guest>` | Stops a guest, orderly first, by signal after `--grace` seconds |
 | `abgal delete -n <guest>` | Deletes a guest and its disk, after asking |
+| `abgal watch -n <guest>` | The temperature watch. `start` runs it by itself, so it is only called by hand after `--no-watch` |
 
 Every command takes `--help`. A guest can be named by its name or by its
 eight character id.

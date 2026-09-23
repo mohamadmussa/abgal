@@ -22,7 +22,7 @@
   The often cited version 7 is outdated, the tool here writes 8.
 
   It is installed by placing it at ~/.android/devices.xml, where the SDK
-  tools read it. create-avd.sh links it there on first use.
+  tools read it. abgal create links it there on first use.
 -->
 
 <d:devices
