@@ -42,7 +42,17 @@ jobs:
           sudo mv shellcheck-v0.10.0/shellcheck /usr/local/bin/
           shellcheck --version
 
+      # A clean ShellCheck prints nothing, and so does one that was handed no
+      # files at all. The two have to be told apart, so the list is printed and
+      # an empty one fails the step rather than passing it.
       - name: ShellCheck over the tracked shell files
         run: |
-          git ls-files -z '*.sh' .githooks/pre-commit \
-            | xargs -0 -r shellcheck --severity=warning --shell=bash
+          set -euo pipefail
+          mapfile -d '' -t files < <(git ls-files -z '*.sh' .githooks/pre-commit)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No shell file matched. That is a broken pattern, not a clean tree."
+            exit 1
+          fi
+          printf 'Checking %d files:\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+          shellcheck --severity=warning --shell=bash "${files[@]}"
