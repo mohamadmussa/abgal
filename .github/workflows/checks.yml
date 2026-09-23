@@ -1,0 +1,48 @@
+# What has to be true before a branch reaches main.
+#
+# One deliberate gap, stated here so a green tick is not read as more than it
+# is: the commit gate has two halves. The structural patterns live in the
+# script and run here. The literal deny list lives in .private-words, which is
+# never committed and is therefore absent on this runner. A pass here means
+# "nothing of the shapes that can be described in public", not "nothing
+# private". The full gate runs locally, in .githooks/pre-commit.
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Commit gate over every tracked file
+        run: python3 tools/check-private.py --all
+
+      - name: Python compiles
+        run: python3 -m py_compile abgal tools/check-private.py
+
+      - name: The program builds its own command line
+        run: python3 abgal --help > /dev/null
+
+      # Pinned rather than taken from the runner image, because a tool that
+      # silently changes version between here and a developer machine is the
+      # thing this repository spends the most effort avoiding.
+      - name: Install ShellCheck 0.10.0
+        run: |
+          curl -sSLo sc.tar.xz \
+            https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
+          tar -xJf sc.tar.xz
+          sudo mv shellcheck-v0.10.0/shellcheck /usr/local/bin/
+          shellcheck --version
+
+      - name: ShellCheck over the tracked shell files
+        run: |
+          git ls-files -z '*.sh' .githooks/pre-commit \
+            | xargs -0 -r shellcheck --severity=warning --shell=bash
