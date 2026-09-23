@@ -13,6 +13,7 @@ machine outside it.
   abgal start -n <a> -n <b>           start them one after another
   abgal status                        what is on disk and what is running
   abgal stop -n <guest>               stop that guest
+  abgal watch -n <guest>              the temperature watch start runs by itself
 
 Only the Python standard library is used. There is nothing to install and
 nothing to package: the file is the program.
@@ -34,7 +35,6 @@ HOME = Path(__file__).resolve().parent
 SDK = HOME / "sdk"
 AVD = HOME / "avd"
 LOGS = HOME / "logs"
-BIN = HOME / "bin"
 ADB = SDK / "platform-tools" / "adb"
 EMULATOR = SDK / "emulator" / "emulator"
 AVDMANAGER = SDK / "cmdline-tools" / "latest" / "bin" / "avdmanager"
@@ -817,7 +817,7 @@ def start_one(args, name):
     # file away. Measured on 2026-09-22.
     if not args.no_watch:
         subprocess.Popen(
-            ["bash", str(BIN / "temperature-watch.sh"), name],
+            [sys.executable, str(Path(__file__).resolve()), "watch", "-n", name],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             cwd=str(HOME), env=sdk_env(), start_new_session=True,
         )
@@ -877,29 +877,29 @@ def cmd_start(args):
     return 0
 
 
-def stop_one(name, serial, grace):
+def stop_one(name, serial, grace, say=print):
     """The orderly way first, force only afterwards.
 
     A hard kill can damage the device image, and rebuilding that costs more
-    than the wait. The same three steps the temperature watch takes.
+    than the wait. The temperature watch stops a guest the same way.
     """
     if serial:
-        print("  %s: asking %s to shut down." % (name, serial))
+        say("  %s: asking %s to shut down." % (name, serial))
         adb("emu", "kill", serial=serial, timeout=20)
 
     deadline = time.time() + grace
     while time.time() < deadline:
         if running_pid(name) is None:
-            print("  %s: stopped." % name)
+            say("  %s: stopped." % name)
             return True
         time.sleep(1)
 
     for step, number in (("SIGTERM", signal.SIGTERM), ("SIGKILL", signal.SIGKILL)):
         pid = running_pid(name)
         if pid is None:
-            print("  %s: stopped." % name)
+            say("  %s: stopped." % name)
             return True
-        print("  %s: not responding, %s to pid %d." % (name, step, pid))
+        say("  %s: not responding, %s to pid %d." % (name, step, pid))
         try:
             os.kill(pid, number)
         except OSError:
@@ -907,9 +907,9 @@ def stop_one(name, serial, grace):
         time.sleep(10)
 
     if running_pid(name) is None:
-        print("  %s: stopped." % name)
+        say("  %s: stopped." % name)
         return True
-    print("  %s: still running. Nothing else this program can do." % name)
+    say("  %s: still running. Nothing else this program can do." % name)
     return False
 
 
@@ -1005,6 +1005,159 @@ def cmd_status(args):
     return 0
 
 
+# --------------------------------------------------------------------- watch
+
+
+# A decision from 2026-09-20, not the manufacturer's values: the chip reports
+# high 84 C and crit 100 C. Idle already reached 86 C without one throttle
+# event, and the abort has to come before the hardware acts. See finding B14.
+TEMP_WARN = 88
+TEMP_STOP = 96
+
+
+def env_number(name, default):
+    raw = os.environ.get(name, "")
+    if not raw:
+        return default
+    if not raw.isdigit():
+        fail("%s=%s is not a whole number." % (name, raw))
+    return int(raw)
+
+
+def thermal_zone():
+    """The x86_pkg_temp zone, found by its type file.
+
+    A glob over all zones would also match acpitz, which gives no usable
+    value on this hardware.
+    """
+    for zone in sorted(Path("/sys/class/thermal").glob("thermal_zone*")):
+        try:
+            if (zone / "type").read_text().strip() == "x86_pkg_temp":
+                return zone / "temp"
+        except OSError:
+            continue
+    return None
+
+
+def temperature(zone):
+    """The package temperature in whole degrees, or None.
+
+    The file first, sensors second. Both were checked against each other on
+    2026-09-20 and agree except for rounding.
+    """
+    if zone:
+        try:
+            value = int(zone.read_text().strip()) // 1000
+            if value:
+                return value
+        except (OSError, ValueError):
+            pass
+    try:
+        out = subprocess.run(["sensors"], capture_output=True, text=True,
+                             timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    for line in out.splitlines():
+        if line.startswith("Package id 0"):
+            digits = re.match(r"\+?(\d+)", line.split()[3])
+            return int(digits.group(1)) if digits else None
+    return None
+
+
+def watched(name):
+    """The guests being watched right now, by name."""
+    found = []
+    for _, args in qemu_processes():
+        guest = args[args.index("-avd") + 1] if "-avd" in args[:-1] else None
+        if guest and (name is None or guest == name):
+            found.append(guest)
+    return found
+
+
+def cmd_watch(args):
+    # Without a name every guest is watched. With one, only that guest is
+    # stopped: a hot package concerns the whole socket, but one watch must not
+    # clear out every run on the machine.
+    name = resolve(args.name) if args.name else None
+    warn = env_number("ABGAL_TEMP_WARN", TEMP_WARN)
+    stop = env_number("ABGAL_TEMP_STOP", TEMP_STOP)
+    # A case without a screen gains ten degrees in fifteen seconds, so a
+    # threshold only works with sampling this fast.
+    interval = env_number("ABGAL_TEMP_INTERVAL", 2)
+    grace = env_number("ABGAL_TEMP_GRACE", GRACE_SECONDS)
+    warmup = env_number("ABGAL_TEMP_WARMUP", 120)
+
+    # One log per guest, so the lines of several runs do not interleave. The
+    # run before is kept as .1, which answers whether it was already hot.
+    default = LOGS / name / "watch.log" if name else LOGS / "watch.log"
+    log = Path(os.environ.get("ABGAL_TEMP_LOG") or default)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    if log.exists():
+        log.replace(log.with_name(log.name + ".1"))
+
+    def note(text):
+        line = "%s  %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), text)
+        print(line)
+        with log.open("a") as out:
+            out.write(line + "\n")
+
+    zone = thermal_zone()
+    note("Watch on. Warning from %d C, abort from %d C, every %d s.%s"
+         % (warn, stop, interval, " Guest: %s." % name if name else ""))
+    if zone is None:
+        note("Note: no x86_pkg_temp zone found, only sensors counts.")
+    if temperature(zone) is None:
+        note("WATCH ABORTED: no temperature measurable. Neither sensors nor x86_pkg_temp.")
+        return 2
+
+    # Started next to the emulator, the watch may be quicker than qemu.
+    waited = 0
+    while not watched(name):
+        if waited >= warmup:
+            note("After %d s no emulator has appeared. Watch off." % waited)
+            return 0
+        time.sleep(5)
+        waited += 5
+
+    warned, highest, blind = False, 0, 0
+    while True:
+        guests_now = watched(name)
+        if not guests_now:
+            note("No emulator left. Watch off. Highest value was %d C." % highest)
+            return 0
+
+        value = temperature(zone)
+        # A watch that measures nothing and keeps running fakes safety.
+        if value is None:
+            blind += 1
+            if blind >= 4:
+                note("WATCH ABORTED: no temperature measurable four times in a row. "
+                     "No longer watching.")
+                return 2
+            note("Warning: temperature not readable (%d of 4)." % blind)
+            time.sleep(interval)
+            continue
+        blind = 0
+        highest = max(highest, value)
+
+        if value >= stop:
+            note("ABORT at %d C, threshold %d. Stopping the emulator." % (value, stop))
+            serials = running_serials()
+            for guest in guests_now:
+                stop_one(guest, serials.get(guest), grace, say=note)
+            note("Stopped. Highest value was %d C." % highest)
+            return 1
+
+        if value >= warn and not warned:
+            note("WARNING at %d C, threshold %d. Run continues." % (value, warn))
+            warned = True
+        elif warned and value < warn - 3:
+            # Three degrees below the threshold, or the message flaps.
+            note("All clear at %d C." % value)
+            warned = False
+        time.sleep(interval)
+
+
 # --------------------------------------------------------------------- entry
 
 
@@ -1086,6 +1239,11 @@ def build_parser():
     status.add_argument("-n", "--name", metavar="GUEST",
                         help="only this guest, by name or by id")
     status.set_defaults(run=cmd_status)
+
+    watch = subs.add_parser("watch", help="stop guests before the processor runs too hot")
+    watch.add_argument("-n", "--name", metavar="GUEST",
+                       help="only this guest, by name or by id. Without it, every guest")
+    watch.set_defaults(run=cmd_watch)
 
     return parser
 
