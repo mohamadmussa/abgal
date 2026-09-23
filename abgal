@@ -684,7 +684,9 @@ def cmd_delete(args):
             print("Nothing was deleted.")
             return 1
 
-    if run_tool([AVDMANAGER, "delete", "avd", "-n", name]) != 0 \
+    # Quiet, because avdmanager ends its line without a newline and the
+    # sentence below says the same. Its errors still reach stderr.
+    if run_tool([AVDMANAGER, "delete", "avd", "-n", name], quiet=True) != 0 \
             or guest_folder(name).exists():
         fail("avdmanager did not remove %s." % name)
 
