@@ -91,9 +91,7 @@ fix(start): keep the previous emulator log
 feat(cli): accept more than one guest name per start
 ```
 
-The type is one of `feat`, `fix`, `docs`, `ci`, `refactor`, `test`, `chore`. The
-history so far uses four of them, `feat`, `fix`, `chore` and `docs`, which is
-what a young repository looks like. The other three are available, not required.
+The type is one of `feat`, `fix`, `docs`, `ci`, `refactor`, `test`, `chore`.
 
 After the subject comes a blank line and then a bullet list of what changed and,
 where it is not obvious, why. Not a paragraph of prose. Somebody reading
@@ -165,9 +163,9 @@ That single command makes the gate run before every commit. It is not on by
 default, because git refuses to let a repository activate its own hooks, and for
 good reason. Until you run it, nothing is checking you.
 
-Exit code 0 means clean, 1 means findings, 2 means the scan could not run. A 2
-is not a pass. If the gate reports something in a file you are adding, do not
-work around the gate. Either the file does not belong in the repository, or the
+Exit code 0 means clean, and nothing else is a pass. A finding ends with 1, and
+so does a scan that could not run. If the gate reports something in a file you
+are adding, do not work around the gate. Either the file does not belong in the repository, or the
 pattern list needs a real discussion in an issue.
 
 Patterns describing a shape, an address, a phone number, a private IP, live in
