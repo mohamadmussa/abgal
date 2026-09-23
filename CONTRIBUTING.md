@@ -125,8 +125,8 @@ tool actually takes is the only path that counts.
 > A second entry point is a quiet lie.
 
 Concretely: if you touch `abgal start`, run `abgal start` against a real guest
-and watch it come up. If you touch the shell scripts under `bin/`, run them and
-read the output. Say in the pull request what you ran and what came back.
+and watch it come up. If you touch the temperature watch, lower
+`ABGAL_TEMP_STOP` below the current temperature and watch it stop a guest. Say in the pull request what you ran and what came back.
 
 ## Everything visible on GitHub is English
 
