@@ -24,11 +24,18 @@ permissions:
 
 jobs:
   triage:
-    # Anyone who can already push here is not a stranger.
+    # Anyone who can already push here is not a stranger, so the job skips
+    # them. That also means it can never fire on a maintainer's own pull
+    # request, which is why the marker exists: a pull request whose title
+    # carries it runs the job against the real trigger, the real payload and
+    # the real token, so this workflow can be proved rather than believed.
+    # It widens nothing. A stranger already passes the second half, and the
+    # marker only ever adds a path the author has to type themselves.
     if: >-
-      github.event.pull_request.author_association != 'OWNER' &&
-      github.event.pull_request.author_association != 'MEMBER' &&
-      github.event.pull_request.author_association != 'COLLABORATOR'
+      contains(github.event.pull_request.title, '[triage-selftest]') ||
+      (github.event.pull_request.author_association != 'OWNER' &&
+       github.event.pull_request.author_association != 'MEMBER' &&
+       github.event.pull_request.author_association != 'COLLABORATOR')
     runs-on: ubuntu-latest
     steps:
       - name: Close it unless an issue asked for it
