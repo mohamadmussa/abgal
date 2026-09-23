@@ -833,11 +833,11 @@ def start_one(args, name):
         # watch with nothing to measure ends within a second.
         time.sleep(WATCH_SETTLE)
         if watch.poll() is not None:
-            return problem(
-                "the temperature watch for %s ended at once with exit code %d.\n"
-                "       %s runs without it. See %s,\n"
-                "       and stop the guest with: abgal stop -n %s"
-                % (name, watch.returncode, name, watch_log, name))
+            problem("the temperature watch for %s ended at once with exit code %d.\n"
+                    "       %s runs without it. See %s,\n"
+                    "       and stop the guest with: abgal stop -n %s"
+                    % (name, watch.returncode, name, watch_log, name))
+            return WATCH_DIED
         print("Temperature watch running. Log: %s" % watch_log)
 
     if args.no_wait:
@@ -889,19 +889,29 @@ def cmd_start(args):
     # One after another, never at the same time. Each guest is given the whole
     # sequence of its own start, including its own memory check, and the one
     # after it only begins once that has come to an end.
-    failed = []
+    failed, unwatched, skipped = [], None, []
     for number, name in enumerate(names, 1):
         if len(names) > 1:
             print("[%d of %d]" % (number, len(names)))
-        if start_one(args, name) != 0:
-            failed.append(name)
+        result = start_one(args, name)
         if len(names) > 1:
             print()
+        # The next watch would most likely die the same way, so the batch
+        # ends here instead of starting more guests without one.
+        if result == WATCH_DIED:
+            unwatched, skipped = name, names[number:]
+            break
+        if result != 0:
+            failed.append(name)
 
     if failed:
-        return problem("%d of %d guests did not start: %s"
-                       % (len(failed), len(names), ", ".join(failed)))
-    return 0
+        problem("%d of %d guests did not start: %s"
+                % (len(failed), len(names), ", ".join(failed)))
+    if unwatched and len(names) > 1:
+        problem("%s runs without a temperature watch.%s"
+                % (unwatched, " Not started after it: %s" % ", ".join(skipped)
+                   if skipped else ""))
+    return 1 if failed or unwatched else 0
 
 
 def stop_one(name, serial, grace, say=print):
@@ -1043,6 +1053,9 @@ TEMP_STOP = 96
 
 # How long start gives a new watch before asking whether it is still alive.
 WATCH_SETTLE = 2
+
+# What start_one returns when its guest runs but its watch does not.
+WATCH_DIED = 3
 
 
 def env_number(name, default):
