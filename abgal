@@ -823,12 +823,22 @@ def start_one(args, name):
     # watches for one guest write into the same log and rotate each other's
     # file away. Measured on 2026-09-22.
     if not args.no_watch:
-        subprocess.Popen(
+        watch = subprocess.Popen(
             [sys.executable, str(Path(__file__).resolve()), "watch", "-n", name],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             cwd=str(HOME), env=sdk_env(), start_new_session=True,
         )
-        print("Temperature watch running. Log: %s" % (folder / "watch.log"))
+        watch_log = Path(os.environ.get("ABGAL_TEMP_LOG") or folder / "watch.log")
+        # Its output goes nowhere, so being alive is the only sign it works. A
+        # watch with nothing to measure ends within a second.
+        time.sleep(WATCH_SETTLE)
+        if watch.poll() is not None:
+            return problem(
+                "the temperature watch for %s ended at once with exit code %d.\n"
+                "       %s runs without it. See %s,\n"
+                "       and stop the guest with: abgal stop -n %s"
+                % (name, watch.returncode, name, watch_log, name))
+        print("Temperature watch running. Log: %s" % watch_log)
 
     if args.no_wait:
         return 0
@@ -865,6 +875,10 @@ def cmd_start(args):
         if len(names) > 1:
             fail("--port names one port and %d guests were given. Start them in\n"
                  "       separate calls, or let the emulator pick." % len(names))
+
+    # Before any guest runs, so a bad value stops the start and not the watch.
+    if not args.no_watch:
+        watch_settings()
 
     # One after another, never at the same time. Each guest is given the whole
     # sequence of its own start, including its own memory check, and the one
@@ -1021,6 +1035,9 @@ def cmd_status(args):
 TEMP_WARN = 88
 TEMP_STOP = 96
 
+# How long start gives a new watch before asking whether it is still alive.
+WATCH_SETTLE = 2
+
 
 def env_number(name, default):
     raw = os.environ.get(name, "")
@@ -1029,6 +1046,21 @@ def env_number(name, default):
     if not raw.isdigit():
         fail("%s=%s is not a whole number." % (name, raw))
     return int(raw)
+
+
+def watch_settings():
+    """Warning, stop, interval, grace and warmup, from the environment.
+
+    start reads them too, before any guest runs, because a detached watch that
+    fails on a bad value has nowhere to say so. See #34.
+    """
+    # A case without a screen gains ten degrees in fifteen seconds, so a
+    # threshold only works with sampling this fast.
+    return (env_number("ABGAL_TEMP_WARN", TEMP_WARN),
+            env_number("ABGAL_TEMP_STOP", TEMP_STOP),
+            env_number("ABGAL_TEMP_INTERVAL", 2),
+            env_number("ABGAL_TEMP_GRACE", GRACE_SECONDS),
+            env_number("ABGAL_TEMP_WARMUP", 120))
 
 
 def thermal_zone():
@@ -1086,13 +1118,7 @@ def cmd_watch(args):
     # stopped: a hot package concerns the whole socket, but one watch must not
     # clear out every run on the machine.
     name = resolve(args.name) if args.name else None
-    warn = env_number("ABGAL_TEMP_WARN", TEMP_WARN)
-    stop = env_number("ABGAL_TEMP_STOP", TEMP_STOP)
-    # A case without a screen gains ten degrees in fifteen seconds, so a
-    # threshold only works with sampling this fast.
-    interval = env_number("ABGAL_TEMP_INTERVAL", 2)
-    grace = env_number("ABGAL_TEMP_GRACE", GRACE_SECONDS)
-    warmup = env_number("ABGAL_TEMP_WARMUP", 120)
+    warn, stop, interval, grace, warmup = watch_settings()
 
     # One log per guest, so the lines of several runs do not interleave. The
     # run before is kept as .1, which answers whether it was already hot.
