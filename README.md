@@ -16,16 +16,17 @@ image.
 stateDiagram-v2
     [*] --> template: a line in devices.conf
     template --> stopped: abgal create
+    stopped --> stopped: abgal start, not enough memory
     stopped --> booting: abgal start
     booting --> running: boot completed
-    booting --> stopped: not enough memory, refused
+    booting --> stopped: did not come up
     running --> stopped: abgal stop
     running --> stopped: temperature watch, 96 C
     stopped --> [*]: abgal delete
 ```
 
-`abgal start` refuses a guest when the free memory would drop below what the
-machine keeps for itself. A guest keeps growing for minutes after it has
+`abgal start` refuses a guest before booting it when the free memory would
+drop below what the machine keeps for itself. A guest keeps growing for minutes after it has
 booted, so the check counts its settled size, not the size at boot. `--force`
 starts it anyway.
 
@@ -55,7 +56,7 @@ Download *Command line tools only* for Linux from
 
 ```bash
 mkdir -p sdk/cmdline-tools
-unzip commandlinetools-linux-*_latest.zip -d sdk/cmdline-tools
+unzip ~/Downloads/commandlinetools-linux-*_latest.zip -d sdk/cmdline-tools
 mv sdk/cmdline-tools/cmdline-tools sdk/cmdline-tools/latest
 yes | sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=sdk --licenses
 sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=sdk platform-tools emulator
@@ -96,6 +97,8 @@ sdk/platform-tools/adb -s emulator-5554 install app.apk
 
 ## Commands
 
+Run from the clone as `./abgal`, or put the clone on your `PATH`.
+
 | Command | What it does |
 |---|---|
 | `abgal list` | Shows the templates in `devices.conf` and the guests on disk |
@@ -104,7 +107,7 @@ sdk/platform-tools/adb -s emulator-5554 install app.apk
 | `abgal create <template> --as dev --recreate` | Deletes `dev` first, then creates it again |
 | `abgal start -n <guest>` | Starts one guest and waits until it has booted |
 | `abgal start -n a -n b -n c` | Starts several, one after another, each with its own memory check |
-| `abgal start -n <guest> --locale ar-SA --timezone Asia/Riyadh` | Sets language and time zone instead of inheriting them from the machine |
+| `abgal start -n <guest> --locale ar-SA --timezone Asia/Riyadh` | Sets language and time zone. Without them a guest gets `en-US` and `Europe/Berlin`, not the values of the machine |
 | `abgal start -n <guest> --gpu host` | Renders on the graphics card instead of in software |
 | `abgal start -n <guest> --wipe` | Boots as if new, user data is wiped |
 | `abgal status` | What is on disk, what is running, and how much memory is left |
@@ -138,9 +141,14 @@ guest swaps and an app takes twice as long to start.
 - **Not a test runner.** AbGal gets guests ready. Maestro, Espresso, Appium or
   plain `adb` then do the testing.
 - **Not for physical devices.** It creates and runs emulators only.
-- **Not completely self contained yet.** Everything lives in the clone, with
-  one exception: `~/.android/devices.xml` is a link to the file in the clone,
-  because `avdmanager` reads screen descriptions only from there.
+- **Not completely self contained yet.** SDK, guests and logs live in the
+  clone. The SDK tools still keep small state files in your home folder:
+  `~/.android/` (adb key, feature flags, modem state per port) and
+  `~/.emulator_console_auth_token`. `~/.android/devices.xml` is a link to the
+  file in the clone, because `avdmanager` reads screen descriptions only from
+  there. If that file already exists, for example from Android Studio, AbGal
+  leaves it alone, and `create` reports the device as not listed unless that
+  file describes the same screens.
 
 ## Why it exists next to what is already there
 
