@@ -377,7 +377,10 @@ def cmd_create(args):
     if not args.template:
         args.parser.print_help()
         print()
-        return cmd_list(args)
+        cmd_list(args)
+        # Nothing was created, so the exit code has to say so. A script that
+        # calls this with an empty variable must not read it as success.
+        return 1
 
     known = [t for t, _ in templates()]
     if args.template not in known:
@@ -601,7 +604,10 @@ def cmd_start(args):
     if not args.name:
         args.parser.print_help()
         print()
-        return cmd_list(args)
+        cmd_list(args)
+        # Nothing was started, so the exit code has to say so. "abgal start -n
+        # $GUEST" with an unset variable must not report success.
+        return 1
 
     names = [resolve(n) for n in args.name]
 
