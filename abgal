@@ -1,0 +1,886 @@
+#!/usr/bin/env python3
+"""AbGal. Android Batch Guests, Accelerated and Local.
+
+One program for the whole life of a guest: create it from a template, start
+it, look at it, stop it again. Everything lives under the folder this file
+sits in, so a clone is a complete installation and nothing is written to the
+machine outside it.
+
+  abgal list                          templates and guests
+  abgal create <template>             one guest, named after the template
+  abgal create <template> --count 10  ten guests, numbered
+  abgal start -n <guest>              start one guest
+  abgal start -n <a> -n <b>           start them one after another
+  abgal status                        what is on disk and what is running
+  abgal stop -n <guest>               stop that guest
+
+Only the Python standard library is used. There is nothing to install and
+nothing to package: the file is the program.
+"""
+
+import argparse
+import grp
+import os
+import re
+import secrets
+import shlex
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path(__file__).resolve().parent
+SDK = HOME / "sdk"
+AVD = HOME / "avd"
+LOGS = HOME / "logs"
+BIN = HOME / "bin"
+ADB = SDK / "platform-tools" / "adb"
+EMULATOR = SDK / "emulator" / "emulator"
+
+# The kernel truncates a process name to fifteen characters, and the binary
+# is called qemu-system-x86_64. This is the name that actually appears.
+QEMU = "qemu-system-x86"
+
+# Above the memory a guest is configured for. A guest keeps growing for
+# minutes after it reports a completed boot, so only the settled figure counts.
+# Almost all of it is the software renderer, which is the same size whatever
+# the guest is given. Measured on 2026-09-23: four guests of 1536 MB held
+# 9780 MB between them, and a single one settled at 2415 MB.
+OVERHEAD_MB = 900
+
+# How long an orderly shutdown may take before the signals start. Stop and
+# delete share the number so that --force deletes the same way stop does.
+GRACE_SECONDS = 20
+
+# What the machine keeps for itself. A guest does not reach its full size at
+# boot, it grows for minutes afterwards: measured on 2026-09-22, the same
+# guest left 6875 MB free right after booting and 6106 MB a minute later.
+# A check at start time is therefore always the friendliest number of the
+# run, and without this reserve it would wave through a start that only
+# turns out to be too much once nobody is watching.
+RESERVE_MB = 1024
+
+# How long the id of a guest is. Eight hex characters are four thousand
+# million possibilities, far more than one machine will ever hold, and still
+# short enough to type out by hand.
+ID_CHARS = 8
+
+
+# ---------------------------------------------------------------- foundation
+
+
+def fail(message):
+    print("ERROR: " + message, file=sys.stderr)
+    sys.exit(1)
+
+
+def problem(message):
+    """Says what went wrong without ending the program.
+
+    A batch keeps going after one guest has refused, so its reason is printed
+    where it happened and counted at the end.
+    """
+    print("ERROR: " + message, file=sys.stderr)
+    return 1
+
+
+def sdk_env():
+    """The environment every tool of the SDK is called in.
+
+    The same values bin/env.sh exports for a shell. They are set here as well
+    so that abgal works in a session where nothing was sourced.
+    """
+    env = dict(os.environ)
+    env["ANDROID_HOME"] = str(SDK)
+    env["ANDROID_SDK_ROOT"] = str(SDK)
+    env["ANDROID_AVD_HOME"] = str(AVD)
+    env["PATH"] = os.pathsep.join(
+        [str(SDK / "platform-tools"), str(SDK / "emulator"), env.get("PATH", "")]
+    )
+    return env
+
+
+def adb(*args, serial=None, timeout=30):
+    """Runs one adb command and returns exit code, output and error."""
+    command = [str(ADB)]
+    if serial:
+        command += ["-s", serial]
+    command += [str(a) for a in args]
+    try:
+        done = subprocess.run(
+            command, capture_output=True, text=True, timeout=timeout, env=sdk_env()
+        )
+    except (subprocess.TimeoutExpired, OSError) as problem:
+        return 1, "", str(problem)
+    return done.returncode, done.stdout.strip(), done.stderr.strip()
+
+
+INI_LINE = re.compile(r"^([A-Za-z0-9._]+)\s*=\s*(.*)$")
+
+
+def read_ini(path):
+    """Reads config.ini, in both of the spellings it comes in.
+
+    avdmanager writes "key=value", the emulator rewrites the same line as
+    "key = value" at every start. The first occurrence of a key wins, which
+    is what the shell scripts do with head -1.
+    """
+    values = {}
+    try:
+        text = path.read_text(errors="replace")
+    except OSError:
+        return values
+    for line in text.splitlines():
+        found = INI_LINE.match(line.strip())
+        if found and found.group(1) not in values:
+            values[found.group(1)] = found.group(2).strip()
+    return values
+
+
+def memory_mb(raw):
+    """config.ini writes memory either as a plain number or with a suffix."""
+    raw = (raw or "").strip()
+    try:
+        if raw.upper().endswith("G"):
+            return int(float(raw[:-1]) * 1024)
+        if raw.upper().endswith("M"):
+            return int(float(raw[:-1]))
+        return int(float(raw))
+    except ValueError:
+        return 0
+
+
+def available_mb():
+    """Free memory, read from the kernel and not from "free".
+
+    The "free" command translates its row labels, so a pattern for "Mem:"
+    silently matches nothing on a machine that is not set to English.
+    """
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+# -------------------------------------------------------------------- guests
+
+
+def templates():
+    """The templates in devices.conf, as name and note."""
+    found = []
+    try:
+        text = (HOME / "devices.conf").read_text()
+    except OSError:
+        return found
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = [f.strip() for f in line.split("|")]
+        if len(fields) >= 7:
+            found.append((fields[0], fields[6]))
+    return found
+
+
+def guest_id(folder):
+    """The id of this guest, given to it once and never changed again.
+
+    The file is created with O_EXCL, so two processes that meet a guest
+    without an id at the same moment cannot both give it one. The loser of
+    that race reads what the winner wrote, on the second turn.
+    """
+    mark = folder / "abgal-id"
+    for _ in range(2):
+        try:
+            found = mark.read_text(errors="replace").strip()
+        except OSError:
+            found = ""
+        if found:
+            return found
+        try:
+            handle = os.open(str(mark), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except OSError:
+            continue
+        with os.fdopen(handle, "w") as stream:
+            stream.write(secrets.token_hex(ID_CHARS // 2) + "\n")
+    return "unknown"
+
+
+def guests():
+    """Every guest on disk, with its template and its id."""
+    found = []
+    if not AVD.is_dir():
+        return found
+    for folder in sorted(AVD.glob("*.avd")):
+        if not folder.is_dir():
+            continue
+        mark = folder / "abgal-template"
+        template = "unknown"
+        if mark.is_file():
+            template = mark.read_text(errors="replace").strip() or "unknown"
+        found.append((folder.name[:-4], template, guest_id(folder)))
+    return found
+
+
+def guest_folder(name):
+    return AVD / (name + ".avd")
+
+
+def resolve(wanted):
+    """The name of the guest behind a name or an id.
+
+    Both work wherever a guest has to be named. The id belongs to this one
+    guest for its whole life, while a name is freed by a delete and can be
+    handed to a different guest later.
+    """
+    rows = guests()
+    for name, _, number in rows:
+        if wanted in (name, number):
+            return name
+    known = ", ".join("%s (%s)" % (n, i) for n, _, i in rows)
+    fail("there is no guest called '%s'.\n       On disk: %s"
+         % (wanted, known or "nothing yet."))
+
+
+def qemu_processes():
+    """Every running emulator, as pid and its argument list."""
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            if (entry / "comm").read_text().strip() != QEMU:
+                continue
+            raw = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        args = [a.decode(errors="replace") for a in raw.split(b"\0") if a]
+        yield int(entry.name), args
+
+
+def running_pid(name):
+    """The pid this guest runs under, or None.
+
+    The name is compared against whole arguments. A search through the joined
+    command line would also match a guest whose name merely starts the same.
+    """
+    for pid, args in qemu_processes():
+        if name in args:
+            return pid
+    return None
+
+
+# ----------------------------------------------------------------------- adb
+
+
+def attached():
+    """Every emulator adb knows, as serial mapped to its state.
+
+    The state matters and is passed on unchanged. "device" is ready, "offline"
+    is still booting or already dying, and "unauthorized" means the console
+    token was not accepted. All three look like a running guest from outside.
+    """
+    adb("start-server", timeout=60)
+    code, out, _ = adb("devices")
+    found = {}
+    if code != 0:
+        return found
+    for line in out.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].startswith("emulator-"):
+            found[parts[0]] = parts[1]
+    return found
+
+
+def serial_name(serial):
+    """Asks the emulator itself which guest it is running.
+
+    Without -port the emulator picks its own port, so the port cannot be read
+    from the command line that started it. The console knows the answer, and
+    it answers long before the guest has finished booting.
+    """
+    code, out, _ = adb("emu", "avd", "name", serial=serial, timeout=10)
+    if code != 0 or not out:
+        return None
+    first = out.splitlines()[0].strip()
+    return None if first in ("", "OK", "KO") else first
+
+
+def serial_of(name):
+    """The serial this guest is reachable under, or None."""
+    for serial, state in attached().items():
+        if state == "unauthorized":
+            continue
+        if serial_name(serial) == name:
+            return serial
+    return None
+
+
+def port_of(serial):
+    try:
+        return int(serial.split("-")[1])
+    except (IndexError, ValueError):
+        return 0
+
+
+# -------------------------------------------------------------------- output
+
+
+def field(label, value):
+    print("  %-10s %s" % (label, value))
+
+
+def run_script(script, *args, env_extra=None):
+    """Runs one of the scripts in bin/ and passes its output straight through.
+
+    Our own output is flushed first. The script writes to the same terminal
+    without a buffer in between, so anything still held back here would
+    appear after it and describe the wrong step.
+    """
+    sys.stdout.flush()
+    env = sdk_env()
+    if env_extra:
+        env.update(env_extra)
+    command = ["bash", str(BIN / script)] + [str(a) for a in args]
+    return subprocess.run(command, env=env).returncode
+
+
+# ------------------------------------------------------------------ commands
+
+
+def cmd_list(args):
+    print("Templates in devices.conf:")
+    rows = templates()
+    if not rows:
+        print("  none. devices.conf is missing or empty.")
+    for name, note in rows:
+        print("  %-40s %s" % (name, note))
+
+    print()
+    print("Guests on disk:")
+    rows = guests()
+    if not rows:
+        print("  none yet. Create one with: abgal create <template>")
+        return 0
+    for name, template, number in rows:
+        print("  %-24s %-9s from %s" % (name, number, template))
+    return 0
+
+
+def cmd_create(args):
+    # Without a template this shows what there is to choose from. The names
+    # are long on purpose, so being asked to type one from memory is the
+    # wrong way round: the program knows them and says them.
+    if not args.template:
+        args.parser.print_help()
+        print()
+        cmd_list(args)
+        # Nothing was created, so the exit code has to say so. A script that
+        # calls this with an empty variable must not read it as success.
+        return 1
+
+    known = [t for t, _ in templates()]
+    if args.template not in known:
+        fail(
+            "the template '%s' is not in devices.conf.\n       Known: %s"
+            % (args.template, ", ".join(known) if known else "none")
+        )
+    if args.count < 1:
+        fail("--count has to be at least 1.")
+
+    base = args.after or args.template
+    if args.count == 1:
+        names = [base]
+    else:
+        # Zero padded so that a plain sort puts guest 2 before guest 10. Two
+        # digits are enough for the sixteen ports adb offers, and the width
+        # grows by itself if somebody asks for more.
+        width = max(2, len(str(args.count)))
+        names = ["%s-%0*d" % (base, width, n) for n in range(1, args.count + 1)]
+
+    extra = {"ABGAL_AVD_RECREATE": "1"} if args.recreate else None
+    failed = []
+    for number, name in enumerate(names, 1):
+        if len(names) > 1:
+            print("[%d of %d]" % (number, len(names)))
+        if run_script("create-avd.sh", args.template, name, env_extra=extra) != 0:
+            failed.append(name)
+
+    if failed:
+        fail("%d of %d guests were not created: %s"
+             % (len(failed), len(names), ", ".join(failed)))
+
+    # The id is handed out on the first read, so this line is the moment it
+    # comes into being. Showing it here saves a look at the list afterwards.
+    print()
+    print("Created %d from %s:" % (len(names), args.template))
+    for name in names:
+        print("  %-24s %s" % (name, guest_id(guest_folder(name))))
+    print()
+    print("Start it with: abgal start -n %s" % names[0])
+    return 0
+
+
+def cmd_delete(args):
+    name = resolve(args.name)
+    pid = running_pid(name)
+    if pid:
+        # --yes only answers the question, it does not overrule a running
+        # guest. Deleting the disk out from under a live qemu is how an
+        # unattended script turns a typo into a corrupted image.
+        if not args.force:
+            fail("%s is running as pid %d. Stop it first, or pass --force."
+                 % (name, pid))
+        print("%s is running. --force stops it before deleting." % name)
+        if not stop_one(name, running_serials().get(name), args.grace):
+            fail("%s could not be stopped, so nothing was deleted." % name)
+
+    if not args.yes:
+        if not sys.stdin.isatty():
+            fail("nothing to ask on. Pass --yes to delete %s unattended." % name)
+        answer = input("Delete %s and its disk? This cannot be undone. [y/N] " % name)
+        if answer.strip().lower() not in ("y", "yes"):
+            print("Nothing was deleted.")
+            return 1
+
+    manager = SDK / "cmdline-tools" / "latest" / "bin" / "avdmanager"
+    done = subprocess.run([str(manager), "delete", "avd", "-n", name], env=sdk_env())
+    if done.returncode != 0 or guest_folder(name).exists():
+        fail("avdmanager did not remove %s." % name)
+
+    # The logs stay. They are the record of what this guest did, they cost
+    # almost nothing, and a guest of the same name later starts a fresh file
+    # and keeps the previous one as .1 anyway.
+    print("%s is gone. Its folder under logs/ was left in place." % name)
+    return 0
+
+
+def wait_for_console(name, seconds):
+    """Waits until the started guest answers on its console.
+
+    This is the point at which a start has demonstrably worked. The emulator
+    refuses a second instance of the same guest, but only after it is under
+    way, and until then it looks exactly like a slow start.
+    """
+    started = time.time()
+    while time.time() - started < seconds:
+        serial = serial_of(name)
+        if serial:
+            return serial
+        # A guest that has no process left after the first few seconds is not
+        # slow, it is gone. Waiting the full timeout for it would only delay
+        # the log that says why.
+        if time.time() - started > 15 and running_pid(name) is None:
+            return None
+        time.sleep(2)
+    return None
+
+
+def wait_for_boot(serial, seconds):
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        code, out, _ = adb("shell", "getprop", "sys.boot_completed", serial=serial)
+        if code == 0 and out.strip() == "1":
+            return True
+        time.sleep(3)
+    return False
+
+
+def start_one(args, name):
+    pid = running_pid(name)
+    if pid:
+        return problem("%s is already running as pid %d." % (name, pid))
+
+    # Read for this guest and at this moment. In a batch the guest before it
+    # is already up and still growing, so every start gets the number that is
+    # true for it and not the one the first guest saw.
+    config = read_ini(guest_folder(name) / "config.ini")
+    wanted = memory_mb(config.get("hw.ramSize")) + OVERHEAD_MB
+    free = available_mb()
+    if free is not None and free < wanted + RESERVE_MB and not args.force:
+        return problem(
+            "%s needs about %d MB, %d MB are free, and %d MB stay reserved for\n"
+            "       the machine. Stop a guest first, or insist with --force."
+            % (name, wanted, free, RESERVE_MB)
+        )
+
+    command = [str(EMULATOR), "-avd", name]
+    if args.port is not None:
+        command += ["-port", str(args.port)]
+    command += [
+        "-no-window",
+        "-no-audio",
+        "-no-boot-anim",
+        "-no-metrics",
+        "-gpu", args.gpu,
+        # Without this the emulator ignores hw.ramSize and raises every guest to
+        # 2560 MB. With it the value is honoured exactly, and ro.config.low_ram
+        # still comes back empty, so the guest is not a low memory device.
+        "-lowram",
+        "-no-snapshot-load",
+        "-no-snapshot-save",
+        "-prop", "persist.sys.locale=" + args.locale,
+        "-prop", "persist.sys.timezone=" + args.timezone,
+    ]
+    if args.wipe:
+        command += ["-wipe-data"]
+
+    # The kvm group can be in the group database without being in a session
+    # that logged in before it was granted. "sg kvm" bridges that gap without
+    # a fresh login.
+    try:
+        in_kvm = grp.getgrnam("kvm").gr_gid in os.getgroups()
+    except KeyError:
+        in_kvm = True
+    if not in_kvm:
+        print("Note: this session does not know the kvm group, starting via sg kvm.")
+        command = ["sg", "kvm", "-c", " ".join(shlex.quote(c) for c in command)]
+
+    folder = LOGS / name
+    folder.mkdir(parents=True, exist_ok=True)
+    logfile = folder / "emulator.log"
+
+    mark = guest_folder(name) / "abgal-template"
+    print("Starting %s" % name)
+    field("Template", mark.read_text().strip() if mark.is_file() else "unknown")
+    field("Screen", "%sx%s at %s dpi" % (config.get("hw.lcd.width", "?"),
+                                         config.get("hw.lcd.height", "?"),
+                                         config.get("hw.lcd.density", "?")))
+    field("Memory", "%s MB" % config.get("hw.ramSize", "?"))
+    field("Graphics", args.gpu)
+    field("Language", args.locale)
+    field("Port", args.port if args.port is not None else "chosen by the emulator")
+    field("Log", logfile)
+    print()
+
+    # The previous run is kept as .1, the same two generations the watch keeps.
+    # The failure message below quotes the last lines of this file, so it has
+    # to hold this start and not the one before it.
+    if logfile.exists():
+        logfile.replace(folder / "emulator.log.1")
+
+    with open(logfile, "wb") as stream:
+        subprocess.Popen(
+            command, stdout=stream, stderr=subprocess.STDOUT,
+            cwd=str(HOME), env=sdk_env(), start_new_session=True,
+        )
+
+    serial = wait_for_console(name, args.timeout)
+    if not serial:
+        tail = ""
+        try:
+            tail = "\n".join(logfile.read_text(errors="replace").splitlines()[-8:])
+        except OSError:
+            pass
+        return problem("%s did not come up. Last lines of the log:\n%s" % (name, tail))
+
+    print("Console answers on %s." % serial)
+
+    # The watch is started here and not before the emulator, because a start
+    # the emulator then refuses would otherwise leave the watch behind. Two
+    # watches for one guest write into the same log and rotate each other's
+    # file away. Measured on 2026-09-22.
+    if not args.no_watch:
+        subprocess.Popen(
+            ["bash", str(BIN / "temperature-watch.sh"), name],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            cwd=str(HOME), env=sdk_env(), start_new_session=True,
+        )
+        print("Temperature watch running. Log: %s" % (folder / "watch.log"))
+
+    if args.no_wait:
+        return 0
+
+    print("Waiting for the guest to finish booting.")
+    if not wait_for_boot(serial, args.timeout):
+        return problem("%s is running on %s but did not report a completed boot "
+                       "in %d s." % (name, serial, args.timeout))
+    print("%s is ready on %s." % (name, serial))
+    return 0
+
+
+def cmd_start(args):
+    # Without a name this prints the help instead of starting everything.
+    # For create and status "all of them" is harmless, for start it is not:
+    # thirty guests at once would take the machine down, and a command that
+    # can do that should have to be spelled out, guest by guest.
+    if not args.name:
+        args.parser.print_help()
+        print()
+        cmd_list(args)
+        # Nothing was started, so the exit code has to say so. "abgal start -n
+        # $GUEST" with an unset variable must not report success.
+        return 1
+
+    names = [resolve(n) for n in args.name]
+
+    if args.port is not None:
+        # The emulator's own rule, from "emulator -help-port": an even number
+        # from 5554 to 5584, because the next one up is taken by adb. Outside
+        # that range adb no longer finds the guest by itself.
+        if args.port < 5554 or args.port > 5584 or args.port % 2:
+            fail("%d is not usable. Even numbers from 5554 to 5584 only." % args.port)
+        if len(names) > 1:
+            fail("--port names one port and %d guests were given. Start them in\n"
+                 "       separate calls, or let the emulator pick." % len(names))
+
+    # One after another, never at the same time. Each guest is given the whole
+    # sequence of its own start, including its own memory check, and the one
+    # after it only begins once that has come to an end.
+    failed = []
+    for number, name in enumerate(names, 1):
+        if len(names) > 1:
+            print("[%d of %d]" % (number, len(names)))
+        if start_one(args, name) != 0:
+            failed.append(name)
+        if len(names) > 1:
+            print()
+
+    if failed:
+        return problem("%d of %d guests did not start: %s"
+                       % (len(failed), len(names), ", ".join(failed)))
+    return 0
+
+
+def stop_one(name, serial, grace):
+    """The orderly way first, force only afterwards.
+
+    A hard kill can damage the device image, and rebuilding that costs more
+    than the wait. The same three steps the temperature watch takes.
+    """
+    if serial:
+        print("  %s: asking %s to shut down." % (name, serial))
+        adb("emu", "kill", serial=serial, timeout=20)
+
+    deadline = time.time() + grace
+    while time.time() < deadline:
+        if running_pid(name) is None:
+            print("  %s: stopped." % name)
+            return True
+        time.sleep(1)
+
+    for step, number in (("SIGTERM", signal.SIGTERM), ("SIGKILL", signal.SIGKILL)):
+        pid = running_pid(name)
+        if pid is None:
+            print("  %s: stopped." % name)
+            return True
+        print("  %s: not responding, %s to pid %d." % (name, step, pid))
+        try:
+            os.kill(pid, number)
+        except OSError:
+            pass
+        time.sleep(10)
+
+    if running_pid(name) is None:
+        print("  %s: stopped." % name)
+        return True
+    print("  %s: still running. Nothing else this program can do." % name)
+    return False
+
+
+def running_serials():
+    """Maps guest name to adb serial for every guest attached right now."""
+    found = {}
+    for serial, state in attached().items():
+        if state == "unauthorized":
+            # The serial answers but the console refused the token, so the
+            # guest behind it cannot be asked for its name.
+            continue
+        name = serial_name(serial)
+        if name:
+            found[name] = serial
+    return found
+
+
+def cmd_stop(args):
+    # Without a name this prints the help instead of stopping everything, the
+    # same rule start follows. A stop that takes down thirty guests because a
+    # flag was forgotten is the one mistake this program must not make easy.
+    if not args.name:
+        args.parser.print_help()
+        print()
+        live = [g for g, _, _ in guests() if running_pid(g) is not None]
+        if live:
+            print("Running right now: %s" % ", ".join(live))
+        else:
+            print("Nothing is running.")
+        return 1
+
+    targets = [resolve(n) for n in args.name]
+    names = running_serials()
+
+    print("Stopping %d guest(s):" % len(targets))
+    # Every target is tried, and only then is the result judged. A short
+    # circuit here would leave the guests after the first stubborn one running.
+    results = [stop_one(name, names.get(name), args.grace) for name in targets]
+
+    # The number worth having after a stop is how much room came back, because
+    # that is what decides whether the next guest may start.
+    free = available_mb()
+    done = sum(1 for result in results if result)
+    if free is None:
+        print("%d of %d stopped." % (done, len(targets)))
+    else:
+        print("%d of %d stopped. Memory available: %d MB." % (done, len(targets), free))
+    return 0 if all(results) else 1
+
+
+def cmd_status(args):
+    rows = guests()
+    if args.name:
+        wanted = resolve(args.name)
+        rows = [r for r in rows if r[0] == wanted]
+    if not rows:
+        print("No guests on disk. Create one with: abgal create <template>")
+        return 0
+
+    states = attached()
+    by_name = {}
+    for serial, state in states.items():
+        if state == "unauthorized":
+            # The serial is known but the console refused the token, so the
+            # guest behind it cannot be asked for its name. It is listed
+            # below under its serial, because ignoring it would hide a guest
+            # that is holding a port.
+            continue
+        found = serial_name(serial)
+        if found:
+            by_name[found] = (serial, state)
+
+    free = available_mb()
+    layout = "%-22s %-9s %-11s %-14s %-12s %s"
+    print(layout % ("GUEST", "ID", "STATE", "SERIAL", "ADB", "TEMPLATE"))
+    for name, template, number in rows:
+        pid = running_pid(name)
+        serial, state = by_name.get(name, (None, None))
+        running = "stopped" if pid is None else "pid %d" % pid
+        if pid is not None and serial is None:
+            state = "not visible"
+        print(layout % (name, number, running, serial or "-", state or "-", template))
+
+    unclaimed = [s for s, v in states.items() if v == "unauthorized"]
+    if unclaimed:
+        print()
+        print("Unauthorized, name not readable: " + ", ".join(sorted(unclaimed)))
+
+    if free is not None:
+        print()
+        print("Memory available: %d MB. A guest needs its own size plus about %d MB."
+              % (free, OVERHEAD_MB))
+    return 0
+
+
+# --------------------------------------------------------------------- entry
+
+
+EXAMPLES = """examples:
+  abgal list
+  abgal create phone-1080x2400-480-api35-x86_64 --as dev --count 10
+  abgal start -n dev-01
+  abgal start -n dev-01 -n dev-02 -n dev-03
+  abgal start -n dev-01 --gpu host --locale ar-SA
+  abgal status
+  abgal stop -n dev-01
+"""
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="abgal",
+        description="Android guests on this machine, created and run in batches.",
+        epilog=EXAMPLES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subs = parser.add_subparsers(dest="command")
+
+    listing = subs.add_parser("list", help="show the templates and the guests")
+    listing.set_defaults(run=cmd_list)
+
+    create = subs.add_parser("create", help="create guests from a template")
+    create.add_argument("template", nargs="?",
+                        help="a template name from devices.conf. Without it,"
+                             " the templates are listed")
+    create.add_argument("--as", dest="after", metavar="NAME",
+                        help="name the guests after this instead of the template")
+    create.add_argument("--count", type=int, default=1, metavar="N",
+                        help="create N guests, numbered from 01")
+    create.add_argument("--recreate", action="store_true",
+                        help="delete an existing guest of that name first")
+    create.set_defaults(run=cmd_create, parser=create)
+
+    delete = subs.add_parser("delete", help="delete one guest and its disk")
+    delete.add_argument("-n", "--name", required=True, metavar="GUEST",
+                        help="the guest to delete, by name or by id")
+    delete.add_argument("--yes", action="store_true", help="do not ask first")
+    delete.add_argument("--force", action="store_true",
+                        help="stop the guest first if it is still running")
+    delete.add_argument("--grace", type=int, default=GRACE_SECONDS,
+                        metavar="SECONDS",
+                        help="how long --force waits for an orderly shutdown")
+    delete.set_defaults(run=cmd_delete)
+
+    start = subs.add_parser("start", help="start guests, one after another")
+    start.add_argument("-n", "--name", metavar="GUEST", action="append",
+                       help="a guest to start, by name or by id. Repeatable")
+    start.add_argument("--port", type=int,
+                       help="a fixed port. Without it the emulator picks one")
+    start.add_argument("--gpu", default=os.environ.get("ABGAL_GPU", "software"),
+                       help="graphics backend, software or host")
+    start.add_argument("--locale", default=os.environ.get("ABGAL_LOCALE", "en-US"),
+                       help="system language of the guest")
+    start.add_argument("--timezone", default="Europe/Berlin")
+    start.add_argument("--wipe", action="store_true",
+                       help="wipe user data, so the guest boots as if it were new")
+    start.add_argument("--force", action="store_true",
+                       help="start even when memory looks too tight")
+    start.add_argument("--no-watch", action="store_true",
+                       help="do not start the temperature watch")
+    start.add_argument("--no-wait", action="store_true",
+                       help="return as soon as the console answers")
+    start.add_argument("--timeout", type=int, default=300, metavar="SECONDS")
+    start.set_defaults(run=cmd_start, parser=start)
+
+    stop = subs.add_parser("stop", help="stop guests, one after another")
+    stop.add_argument("-n", "--name", metavar="GUEST", action="append",
+                      help="a guest to stop, by name or by id. Repeatable")
+    stop.add_argument("--grace", type=int, default=GRACE_SECONDS, metavar="SECONDS",
+                      help="how long to wait for an orderly shutdown")
+    stop.set_defaults(run=cmd_stop, parser=stop)
+
+    status = subs.add_parser("status", help="what is on disk and what is running")
+    status.add_argument("-n", "--name", metavar="GUEST",
+                        help="only this guest, by name or by id")
+    status.set_defaults(run=cmd_status)
+
+    return parser
+
+
+def main():
+    # Into a pipe or a log file Python buffers by the block while the tools it
+    # calls write straight through, so a start ends up in the file after the
+    # line that reports it finished. A log whose order lies is worse than none.
+    sys.stdout.reconfigure(line_buffering=True)
+
+    parser = build_parser()
+    args = parser.parse_args()
+    if not getattr(args, "run", None):
+        parser.print_help()
+        return 0
+    # "list" reads two text files and works on a fresh clone. Everything else
+    # talks to the SDK, and a missing SDK there is worth saying plainly
+    # instead of letting adb fail with a path nobody recognises.
+    if args.command != "list" and (not ADB.is_file() or not EMULATOR.is_file()):
+        fail("the Android SDK is not under %s.\n"
+             "       Both platform-tools/adb and emulator/emulator have to be there."
+             % SDK)
+    return args.run(args)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)
