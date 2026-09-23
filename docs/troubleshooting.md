@@ -58,8 +58,11 @@ and watch `abgal status`. Below 1536 MB a guest swaps.
 ERROR: dev did not come up. Last lines of the log:
 ```
 
-The emulator process ended within the first seconds. The lines below the
-message come from `logs/<guest>/emulator.log`. The most common cause is KVM.
+Either the emulator process ended within the first seconds, or it still runs
+but its console did not answer within `--timeout`. The lines below the
+message come from `logs/<guest>/emulator.log`. In the second case the guest
+keeps running and a new `start` reports it as running, so end it with
+`abgal stop -n <guest>` first. The most common cause is KVM.
 Check that the device exists and that your user is in the group:
 
 ```bash
@@ -97,15 +100,18 @@ own; its last start is in `logs/<guest>/emulator.log`.
 ## Files in your home folder
 
 AbGal keeps the SDK, the guests and the logs in the clone. The SDK tools
-write a few things to your home folder anyway:
+write a few things to your home folder anyway. These are the ones seen on the
+machine AbGal is developed on:
 
 | Path | Written by | What it is |
 |---|---|---|
 | `~/.android/bin/`, `~/.android/cli/` | the Android CLI | the CLI itself with its own Java runtime, about 250 MB |
 | `~/.android/adbkey`, `~/.android/adbkey.pub` | adb | the key adb uses to talk to devices |
+| `~/.android/adb.5037` | adb | which adb program runs the server on port 5037 |
 | `~/.android/devices.xml` | `abgal create` | a link to the clone's screen descriptions |
 | `~/.android/modem-nv-ram-<port>` | the emulator | modem state, one file per port |
 | `~/.android/emu-*`, `~/.android/cache/` | the emulator and the SDK tools | feature flags, update checks, repository lists |
+| `~/.android/userid`, `~/.android/analytics.settings` | the SDK tools | an id and the usage data setting |
 | `~/.emulator_console_auth_token` | the emulator | the token for the emulator console |
 
 The tools write them again when they are missing. Leave the adb key alone

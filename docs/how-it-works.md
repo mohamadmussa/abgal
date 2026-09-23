@@ -15,7 +15,8 @@ command did something you did not expect.
 
 ## Where things live
 
-Everything AbGal writes lands inside the clone:
+Everything AbGal writes lands inside the clone, apart from one link in the
+home folder, `~/.android/devices.xml`:
 
 ```text
 abgal/
@@ -39,27 +40,31 @@ Android CLI among them, see [Troubleshooting](troubleshooting.md#files-in-your-h
 
 ## Create
 
-`abgal create <template> --as dev` takes these steps once per guest:
+`abgal create <template> --as dev` reads the template line from
+`devices.conf` and links `~/.android/devices.xml` to the file in the clone,
+unless that file already exists. Then it takes these steps once per guest:
 
-1. reads the template line from `devices.conf`
-2. links `~/.android/devices.xml` to the file in the clone, unless that file
-   already exists
-3. checks that the screen is listed by `avdmanager list device`
-4. fetches the system image with `android --no-metrics sdk install` if
+1. refuses a name with anything but letters, digits, dot, underscore and dash
+2. checks that the screen is listed by `avdmanager list device`
+3. fetches the system image with `android --no-metrics sdk install` if
    `sdk/system-images/` does not have it
-5. creates `avd/` and calls `avdmanager create avd`
-6. writes `abgal-template` next to `config.ini`
-7. pins five values in `config.ini`, and a sixth for the store template
-8. reads `config.ini` back and compares thirteen values with what it asked for
+4. refuses a guest that is running, because the emulator rewrites
+   `config.ini` at every start
+5. deletes the guest first with `--recreate`. Without it, a guest that exists
+   keeps its disk and only gets the steps from 7 on
+6. creates `avd/` and calls `avdmanager create avd`
+7. writes `abgal-template` next to `config.ini`
+8. pins five values in `config.ini`, and a sixth for the store template
+9. reads `config.ini` back and compares thirteen values with what it asked for
 
-Step 8 is why `create` does more than call `avdmanager`. That tool drops or
+Step 9 is why `create` does more than call `avdmanager`. That tool drops or
 overrides several values without a message, so a guest is only reported as
 created when every value is what the template says. [Templates](templates.md)
 lists the values.
 
-Step 5 creates the folder first because `avdmanager` writes the guest to
+Step 6 creates the folder first because `avdmanager` writes the guest to
 `~/.android/avd` without a word when `ANDROID_AVD_HOME` points at a folder
-that does not exist yet. Step 4 trusts the folder and not the exit code,
+that does not exist yet. Step 3 trusts the folder and not the exit code,
 because the Android CLI ends with 0 even for a package it does not know.
 
 ## Ids
@@ -106,7 +111,7 @@ The emulator is always started with these flags:
 |---|---|
 | `-no-window`, `-no-audio`, `-no-boot-anim` | A guest runs without a screen or sound card |
 | `-no-metrics` | Without it the emulator asks about usage data, and a later version is to stop and wait for the answer |
-| `-gpu software` | Renders on the processor, which works on every machine. `--gpu host` changes it |
+| `-gpu software` | Renders on the processor, which works on every machine. `--gpu host` or `ABGAL_GPU` changes it |
 | `-lowram` | See [Memory](#memory) |
 | `-no-snapshot-load`, `-no-snapshot-save` | Every start is a cold boot, so no run depends on the one before |
 | `-prop persist.sys.locale=en-US` | Language, from `--locale` or `ABGAL_LOCALE` |
@@ -153,10 +158,13 @@ flowchart LR
     B -- no --> Z[stopped]
     B -- yes --> C[SIGTERM] -->|10 s| D{still running?}
     D -- no --> Z
-    D -- yes --> E[SIGKILL] -->|10 s| Z
+    D -- yes --> E[SIGKILL] -->|10 s| F{still running?}
+    F -- no --> Z
+    F -- yes --> X[exit 1]
 ```
 
-A hard kill can damage the guest's disk, so it is the last step. Several
+A hard kill can damage the guest's disk, so it is the last step. If even that
+leaves the process alive, `stop` says so and ends with exit code 1. Several
 guests are stopped one after another. The command prints the memory that is
 free afterwards, because that decides whether the next guest may start.
 
