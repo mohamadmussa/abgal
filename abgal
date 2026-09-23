@@ -42,10 +42,12 @@ EMULATOR = SDK / "emulator" / "emulator"
 # is called qemu-system-x86_64. This is the name that actually appears.
 QEMU = "qemu-system-x86"
 
-# Above the memory a guest is configured for. Measured on 2026-09-22: two
-# guests of 4096 MB each took a machine from 10.3 GB available down to 0.3,
-# so a guest costs about a gigabyte more than it is given.
-OVERHEAD_MB = 1024
+# Above the memory a guest is configured for. A guest keeps growing for
+# minutes after it reports a completed boot, so only the settled figure counts.
+# Almost all of it is the software renderer, which is the same size whatever
+# the guest is given. Measured on 2026-09-23: four guests of 1536 MB held
+# 9780 MB between them, and a single one settled at 2415 MB.
+OVERHEAD_MB = 900
 
 # What the machine keeps for itself. A guest does not reach its full size at
 # boot, it grows for minutes afterwards: measured on 2026-09-22, the same
@@ -482,6 +484,10 @@ def start_one(args, name):
         "-no-boot-anim",
         "-no-metrics",
         "-gpu", args.gpu,
+        # Without this the emulator ignores hw.ramSize and raises every guest to
+        # 2560 MB. With it the value is honoured exactly, and ro.config.low_ram
+        # still comes back empty, so the guest is not a low memory device.
+        "-lowram",
         "-no-snapshot-load",
         "-no-snapshot-save",
         "-prop", "persist.sys.locale=" + args.locale,

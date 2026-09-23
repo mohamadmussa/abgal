@@ -115,6 +115,11 @@ ARGS+=(
   # CI run that nobody is sitting at.
   -no-metrics
   -gpu "$GPU"
+  # Without this the emulator ignores hw.ramSize and silently raises every
+  # guest to 2560 MB. With it the requested size is honoured exactly, and
+  # ro.config.low_ram still comes back empty, so the guest does not declare
+  # itself a low memory device.
+  -lowram
   -no-snapshot-load     # every run starts cold, or it hangs on the previous one
   -no-snapshot-save
   -prop "persist.sys.locale=$LOCALE"
