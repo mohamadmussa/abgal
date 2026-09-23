@@ -417,7 +417,15 @@ def cmd_delete(args):
     name = resolve(args.name)
     pid = running_pid(name)
     if pid:
-        fail("%s is running as pid %d. Stop it first." % (name, pid))
+        # --yes only answers the question, it does not overrule a running
+        # guest. Deleting the disk out from under a live qemu is how an
+        # unattended script turns a typo into a corrupted image.
+        if not args.force:
+            fail("%s is running as pid %d. Stop it first, or pass --force."
+                 % (name, pid))
+        print("%s is running. --force stops it before deleting." % name)
+        if not stop_one(name, running_serials().get(name), args.grace):
+            fail("%s could not be stopped, so nothing was deleted." % name)
 
     if not args.yes:
         if not sys.stdin.isatty():
@@ -785,6 +793,11 @@ def build_parser():
     delete.add_argument("-n", "--name", required=True, metavar="GUEST",
                         help="the guest to delete, by name or by id")
     delete.add_argument("--yes", action="store_true", help="do not ask first")
+    delete.add_argument("--force", action="store_true",
+                        help="stop the guest first if it is still running")
+    delete.add_argument("--grace", type=int, default=GRACE_SECONDS,
+                        metavar="SECONDS",
+                        help="how long --force waits for an orderly shutdown")
     delete.set_defaults(run=cmd_delete)
 
     start = subs.add_parser("start", help="start guests, one after another")
