@@ -122,7 +122,8 @@ Run from the clone as `./abgal`, or put the clone on your `PATH`.
 | `abgal watch -n <guest>` | The temperature watch. `start` runs it by itself, so it is only called by hand after `--no-watch` |
 
 Every command takes `--help`. A guest can be named by its name or by its
-eight character id.
+eight character id. The [guide](docs/README.md) covers templates, the inner
+workings and every error message.
 
 ### Templates
 
