@@ -1,18 +1,6 @@
-# "Issue first, then pull request" is the first rule in CONTRIBUTING.md, and a
-# rule nobody enforces is a wish. This closes a pull request that no issue
-# asked for, with a reason and a way forward.
-#
-# Two deliberate choices about safety:
-#
-# pull_request_target is used because a pull request from a fork gets a
-# read-only token, and this job has to write a comment. That trigger runs with
-# write access to this repository, so the job checks out nothing and runs no
-# code from the pull request. It reads two fields and posts a comment.
-#
-# The title and the body are written by a stranger. They are passed through
-# env, never interpolated into the shell command, because ${{ }} pastes text
-# straight into the script and a title can be written to end one command and
-# start another.
+# Closes a pull request that no issue asked for, with a reason and a way
+# forward. pull_request_target gives a token that can comment on a fork pull
+# request, so nothing from the pull request is checked out or run.
 name: unsolicited pull requests
 
 on:
@@ -25,13 +13,8 @@ permissions:
 
 jobs:
   triage:
-    # Anyone who can already push here is not a stranger, so the job skips
-    # them. That also means it can never fire on a maintainer's own pull
-    # request, which is why the marker exists: a pull request whose title
-    # carries it runs the job against the real trigger, the real payload and
-    # the real token, so this workflow can be proved rather than believed.
-    # It widens nothing. A stranger already passes the second half, and the
-    # marker only ever adds a path the author has to type themselves.
+    # Insiders are skipped, so the marker is the only way to run this on a
+    # maintainer's own pull request and prove it. A stranger already passes.
     if: >-
       contains(github.event.pull_request.title, '[triage-selftest]') ||
       (github.event.pull_request.author_association != 'OWNER' &&
@@ -40,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Close it unless an issue asked for it
+        # Title and body are written by a stranger, so they arrive through env
+        # and are never pasted into the script with ${{ }}.
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -54,9 +39,6 @@ jobs:
                  | grep -oE '#[0-9]+' | tr -d '#' | sort -u || true)
 
           for n in $refs; do
-            # A number that resolves to a pull request is not an issue, so a
-            # pull request pointing only at another pull request is still
-            # unsolicited.
             # Only a 404 means "no such issue". Any other failure stops the job
             # red, because closing a correct pull request is the worse mistake.
             if kind=$(gh api "repos/$REPO/issues/$n" \
