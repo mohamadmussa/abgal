@@ -1408,18 +1408,25 @@ def fetch_zip(row):
         return False
 
     shutil.rmtree(unpack, ignore_errors=True)
-    with zipfile.ZipFile(download) as archive:
-        for info in archive.infolist():
-            path = archive.extract(info, unpack)
-            # zipfile drops the permission bits, and adb without its x bit is
-            # a file that cannot run.
-            mode = info.external_attr >> 16 & 0o777
-            if mode:
-                os.chmod(path, mode)
-    inner = list(unpack.iterdir())
-    (inner[0] if len(inner) == 1 and inner[0].is_dir() else unpack).rename(target)
-    shutil.rmtree(unpack, ignore_errors=True)
-    download.unlink()
+    try:
+        with zipfile.ZipFile(download) as archive:
+            for info in archive.infolist():
+                path = archive.extract(info, unpack)
+                # zipfile drops the permission bits, and adb without its x bit
+                # is a file that cannot run.
+                mode = info.external_attr >> 16 & 0o777
+                if mode:
+                    os.chmod(path, mode)
+        inner = list(unpack.iterdir())
+        (inner[0] if len(inner) == 1 and inner[0].is_dir() else unpack).rename(target)
+    except (OSError, zipfile.BadZipFile) as error:
+        problem("could not unpack into sdk/%s:\n       %s\n"
+                "       If the folder exists without source.properties, move it aside."
+                % (row["part"], error))
+        return False
+    finally:
+        shutil.rmtree(unpack, ignore_errors=True)
+        download.unlink(missing_ok=True)
     print("Unpacked into sdk/%s" % row["part"])
     return True
 
@@ -1459,8 +1466,11 @@ def cmd_setup(args):
             lost = [p for p in packages if installed(p) is None]
             if lost:
                 fail("the Android CLI did not install %s." % ", ".join(lost))
+    # The exit code says whether fetching worked. What doctor finds, such as
+    # a CI runner without /dev/kvm, is shown but does not fail setup.
     print()
-    return cmd_doctor(args)
+    cmd_doctor(args)
+    return 0
 
 
 # --------------------------------------------------------------------- entry
