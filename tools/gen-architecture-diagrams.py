@@ -34,12 +34,10 @@ TARGET_LOOP_SECONDS = 8.0
 # uncompressed seconds; only the animation's own speed is floored.
 MIN_BAR_SECONDS = 0.4
 
-# start-circuit only: an instant/action step has no `seconds` of its own,
-# but still needs a slot on the shared timeline so the order its wire
-# activations light up in stays true to when the real step happens, not
-# just to which steps happen to carry a duration. Small and fixed, not
-# read from anywhere in abgal, because "no time passes" has no real
-# number to measure in the first place.
+# start-timeline only: an instant/action step has no `seconds` of its
+# own, but still needs a slot on the shared timeline so its tick lands at
+# the real moment it happens, not just in the right order. Small and
+# fixed, not read from anywhere in abgal.
 FLASH_GAP_SECONDS = 0.2
 
 # watch-states only: a poll step whose real loop has no cap at all (the
@@ -603,52 +601,32 @@ def _layout_swimlane(flow_):
             "header_y": header_y, "width": width, "height": height}
 
 
-# start-circuit only: a fixed two-above, two-below split of the same four
-# actors. adb sits under emulator so their real wire runs straight down
-# the right column, not through the abgal box.
-CIRCUIT_ABOVE = ("kernel", "emulator")
-CIRCUIT_BELOW = ("watch", "adb")
-FLASH_DOT_R = 4.0
-PULSE_DOT_R = 6.0
+# start-timeline only: the four satellites start-circuit used to wire,
+# minus abgal itself, since no channel entry ever targets abgal.
+TIMELINE_LANES = ("kernel", "emulator", "adb", "watch")
+TIMELINE_LABEL_W = 130.0
+TIMELINE_ROW_H = 50.0
+TIMELINE_ROW_GAP = 34.0
+TIMELINE_AXIS_W = 460.0
+TIMELINE_HEADER_H = 30.0
+TIMELINE_BAR_H = 20.0
+TIMELINE_TICK_R = 5.0
+TIMELINE_MIN_BAR_PX = 14.0
 
 
-def _layout_circuit():
-    """abgal as the hub, its four satellites two above and two below.
-
-    The same hub-and-spoke shape _layout_topology already proves out,
-    reusing its constants (TOPO_NODE_W/TOPO_COL_GAP/TOPO_ROW_GAP) so the
-    two diagrams share one rhythm. Fixed by CIRCUIT_ABOVE/BELOW rather
-    than derived from a flow, so this takes no flow_ argument: the wiring
-    is five nodes, always the same five, not read off any one flow.
+def _layout_timeline():
+    """One row per satellite actor, a shared time axis to the right of
+    the row labels. Fixed, like _layout_circuit was: the four rows are
+    always the same four, not read off any one flow.
     """
-    by_lane = {
-        "abgal": step("circuit-abgal", None, "abgal start", "instant"),
-        "kernel": step("circuit-kernel", None, "kernel", "instant"),
-        "emulator": step("circuit-emulator", None, "emulator", "instant"),
-        "adb": step("circuit-adb", None, "adb", "instant"),
-        "watch": step("circuit-watch", None, "temperature watch", "instant"),
-    }
-    main_w = max(_topo_row_width(len(CIRCUIT_ABOVE)),
-                 _topo_row_width(len(CIRCUIT_BELOW)), TOPO_NODE_W)
-    positions = {}
-
-    def place_row(lanes, y):
-        x = MARGIN + (main_w - _topo_row_width(len(lanes))) / 2.0
-        for lane in lanes:
-            positions[lane] = {"x": x, "y": y, "w": TOPO_NODE_W, "h": BOX_H,
-                              "step": by_lane[lane]}
-            x += TOPO_NODE_W + TOPO_COL_GAP
-
-    y_above = MARGIN
-    y_hub = y_above + BOX_H + TOPO_ROW_GAP
-    y_below = y_hub + BOX_H + TOPO_ROW_GAP
-    place_row(CIRCUIT_ABOVE, y_above)
-    place_row(["abgal"], y_hub)
-    place_row(CIRCUIT_BELOW, y_below)
-
-    width = MARGIN + main_w + MARGIN
-    height = y_below + BOX_H + MARGIN
-    return {"positions": positions, "width": width, "height": height}
+    lane_y = {}
+    y = MARGIN + TIMELINE_HEADER_H
+    for lane in TIMELINE_LANES:
+        lane_y[lane] = y
+        y += TIMELINE_ROW_H + TIMELINE_ROW_GAP
+    height = y - TIMELINE_ROW_GAP + MARGIN
+    width = MARGIN + TIMELINE_LABEL_W + TIMELINE_AXIS_W + MARGIN
+    return {"lane_y": lane_y, "width": width, "height": height}
 
 
 # ports-scale only: a row of fixed slots above a row of illustrative
@@ -768,13 +746,8 @@ def _box_markup(pos):
         parts.append('<text class="label-main" x="%s" y="%s" '
                      'text-anchor="middle">%s</text>'
                      % (fnum(cx), fnum(y + 28 + i * 12), _esc(line)))
-    if s["seconds"] is not None:
-        if s["cap"] == "loop":
-            caption = "%d s, no limit ..." % s["seconds"]
-        elif s["cap"]:
-            caption = "up to %d s" % s["seconds"]
-        else:
-            caption = "%d s" % s["seconds"]
+    caption = _duration_caption(s)
+    if caption:
         parts.append('<text class="label-duration" x="%s" y="%s" '
                      'text-anchor="middle">%s</text>'
                      % (fnum(cx), fnum(y + 54), _esc(caption)))
@@ -963,19 +936,6 @@ def draw_swimlane(flow_, channels):
     return "\n".join(parts)
 
 
-def _wire_points(positions, satellite):
-    """The same hub-edge-to-satellite-edge endpoints _topology_edge_markup
-    computes internally, exposed here so activation dots can be placed
-    along the same line without duplicating _topology_edge_markup itself
-    or having it hand back geometry none of its other callers need.
-    """
-    hub, sat = positions["abgal"], positions[satellite]
-    hub_cx, sat_cx = hub["x"] + hub["w"] / 2.0, sat["x"] + sat["w"] / 2.0
-    if sat["y"] < hub["y"]:
-        return hub_cx, hub["y"], sat_cx, sat["y"] + sat["h"]
-    return hub_cx, hub["y"] + hub["h"], sat_cx, sat["y"]
-
-
 def _channel_timeline(flow_, channels):
     """Each channel-bearing step's cumulative start offset and own active
     span, walked in the flow's real happy-path order (_layout's own main
@@ -1003,71 +963,63 @@ def _channel_timeline(flow_, channels):
     return timeline
 
 
-def _wire_fractions(timeline):
-    """Where along its wire each activation's dot sits.
-
-    One activation on a wire sits at its midpoint. Two (poll-console and
-    poll-boot both target adb, start-watch and wait-settle both target
-    watch) split it instead, the earlier one nearer the hub and the later
-    one nearer the satellite, so the two read apart by position as well
-    as by when they light up.
+def _duration_caption(s):
+    """The real-seconds text a poll or wait step carries, factored out of
+    _box_markup so draw_timeline's bars can show the same words.
     """
-    by_target = {}
-    for entry in timeline:
-        by_target.setdefault(entry["target"], []).append(entry)
-    fractions = {}
-    for entries in by_target.values():
-        step_frac = 1.0 / (len(entries) + 1)
-        for i, entry in enumerate(entries):
-            fractions[entry["id"]] = step_frac * (i + 1)
-    return fractions
+    if s["seconds"] is None:
+        return None
+    if s["cap"] == "loop":
+        return "%d s, no limit ..." % s["seconds"]
+    if s["cap"]:
+        return "up to %d s" % s["seconds"]
+    return "%d s" % s["seconds"]
 
 
-# start-circuit only: adb's answers actually come from the emulator it
-# is watching, not from abgal. Steps that pulse the abgal-adb wire get a
-# matching echo dot on the adb-emulator wire below.
-CIRCUIT_ECHO_TARGET = "adb"
-
-
-def draw_circuit(flow_, channels):
-    """The body markup of a circuit diagram: one fixed wire per actor,
-    plus the real adb-emulator wire.
-
-    Nodes and wires are static, reusing _box_markup and
-    _topology_edge_markup exactly as pieces-topology draws them. A small
-    dot rides each channel-bearing step's wire; _circuit_extra_css times
-    its flash or pulse. A step that targets adb also gets an echo dot on
-    the adb-emulator wire, same timing, id "dot-<step>-echo".
+def draw_timeline(flow_, channels):
+    """The body markup of a timeline diagram: one row per satellite
+    actor, a bar to scale for every real wait, a tick for every instant
+    step. Reuses _channel_timeline's offsets, the same ones a wire-pulse
+    diagram would use, so a bar's position always means the same real
+    moment it would mean anywhere else in this file.
     """
-    positions = _layout_circuit()["positions"]
+    layout = _layout_timeline()
+    lane_y = layout["lane_y"]
+    by_id = dict((s["id"], s) for s in flow_["steps"])
+    x0 = MARGIN + TIMELINE_LABEL_W
+    px_per_s = TIMELINE_AXIS_W / TARGET_LOOP_SECONDS
     parts = [DEFS_MARKUP]
-    for lane in LANE_ORDER:
-        parts.append(_box_markup(positions[lane]))
-    for lane in LANE_ORDER:
-        if lane != "abgal":
-            parts.append(_topology_edge_markup(edge("abgal", lane), positions))
-    parts.append(_topology_edge_markup(edge("adb", "emulator"), positions))
+    parts.append('<text class="label-note" x="%s" y="%s">bar: a real wait, '
+                 'to scale. tick: an instant step.</text>'
+                 % (fnum(MARGIN), fnum(MARGIN + 14)))
+    for lane in TIMELINE_LANES:
+        y = lane_y[lane]
+        parts.append('<text class="label-main" x="%s" y="%s">%s</text>'
+                     % (fnum(MARGIN), fnum(y + TIMELINE_ROW_H / 2.0 + 4),
+                        _esc(LANE_LABELS[lane])))
+        parts.append('<rect class="bar-track" x="%s" y="%s" width="%s" '
+                     'height="%s" rx="4" ry="4"/>'
+                     % (fnum(x0), fnum(y + (TIMELINE_ROW_H - BAR_H) / 2.0),
+                        fnum(TIMELINE_AXIS_W), fnum(BAR_H)))
 
-    timeline = _channel_timeline(flow_, channels)
-    fractions = _wire_fractions(timeline)
-    for entry in timeline:
-        x1, y1, x2, y2 = _wire_points(positions, entry["target"])
-        t = fractions[entry["id"]]
-        dot_x, dot_y = x1 + (x2 - x1) * t, y1 + (y2 - y1) * t
-        r = PULSE_DOT_R if entry["sustained"] else FLASH_DOT_R
-        cls = "wire-dot-pulse" if entry["sustained"] else "wire-dot-flash"
-        parts.append('<circle id="dot-%s" class="%s" cx="%s" cy="%s" r="%s"/>'
-                     % (entry["id"], cls, fnum(dot_x), fnum(dot_y), fnum(r)))
-        if entry["target"] == CIRCUIT_ECHO_TARGET:
-            ex, ey = (positions["adb"]["x"] + positions["adb"]["w"] / 2.0,
-                     positions["adb"]["y"])
-            fx, fy = (positions["emulator"]["x"] + positions["emulator"]["w"] / 2.0,
-                     positions["emulator"]["y"] + positions["emulator"]["h"])
-            echo_dot_x, echo_dot_y = ex + (fx - ex) * t, ey + (fy - ey) * t
-            parts.append('<circle id="dot-%s-echo" class="%s" cx="%s" '
+    for entry in _channel_timeline(flow_, channels):
+        lane, s = entry["target"], by_id[entry["id"]]
+        y, bar_x = lane_y[lane], x0 + entry["offset"] * px_per_s
+        if entry["sustained"]:
+            bar_y = y + (TIMELINE_ROW_H - TIMELINE_BAR_H) / 2.0
+            parts.append('<rect id="tl-bar-%s" class="bar-fill" x="%s" '
+                         'y="%s" width="0" height="%s" rx="4" ry="4"/>'
+                         % (entry["id"], fnum(bar_x), fnum(bar_y),
+                            fnum(TIMELINE_BAR_H)))
+            parts.append('<text class="label-duration" x="%s" y="%s">%s'
+                         '</text>' % (fnum(bar_x), fnum(bar_y - 6),
+                                     _esc(_duration_caption(s))))
+        else:
+            parts.append('<circle id="tl-tick-%s" class="tl-tick" cx="%s" '
                          'cy="%s" r="%s"/>'
-                         % (entry["id"], cls, fnum(echo_dot_x),
-                            fnum(echo_dot_y), fnum(r)))
+                         % (entry["id"], fnum(bar_x),
+                            fnum(y + TIMELINE_ROW_H / 2.0),
+                            fnum(TIMELINE_TICK_R)))
     return "\n".join(parts)
 
 
@@ -1264,48 +1216,39 @@ def _swimlane_extra_css(flow_, channels, layout):
     return "\n".join(lines)
 
 
-def _circuit_extra_css(flow_, channels):
-    """A second, palette-independent `<style>` block, circuit's own.
+def _timeline_extra_css(flow_, channels):
+    """A second, palette-independent `<style>` block, timeline's own.
 
-    Every dot shares one TARGET_LOOP_SECONDS animation-duration; what
-    tells them apart is animation-delay, each one's own cumulative offset
-    from _channel_timeline, so they light up in the loop in true sequence
-    order instead of each keeping its own, unrelated period. A flash's
-    keyframe is a brief spike confined to its own small window near the
-    start of that 8 s cycle; a pulse's fades in, holds for its own scaled
-    duration, then fades out, visibly longer and shaped differently, not
-    the same spike stretched.
+    A bar grows from 0 to its real scaled width at its real offset, holds,
+    then resets before the loop repeats. A tick just flashes, the same
+    keyframe shape start-states already uses for an instant step.
     """
-    timeline = _channel_timeline(flow_, channels)
+    px_per_s = TIMELINE_AXIS_W / TARGET_LOOP_SECONDS
     lines = ["<style>"]
-    lines.append(".wire-dot-flash, .wire-dot-pulse { fill: var(--accent); "
-                 "opacity: 0; }")
-    for entry in timeline:
+    lines.append(".tl-tick { fill: var(--accent); opacity: 0; }")
+    for entry in _channel_timeline(flow_, channels):
         name, delay = entry["id"], fnum(entry["offset"])
         pct = entry["own"] / TARGET_LOOP_SECONDS * 100.0
-        # An echo dot, if this step has one, shares the same selector so
-        # it never drifts out of sync with the dot it mirrors.
-        selector = "#dot-%s" % name
-        if entry["target"] == CIRCUIT_ECHO_TARGET:
-            selector += ", #dot-%s-echo" % name
         if entry["sustained"]:
+            w = fnum(max(entry["own"] * px_per_s, TIMELINE_MIN_BAR_PX))
             lines.append(
-                "@keyframes pulse-%s { 0%% { opacity: 0; } "
-                "%s%% { opacity: 1; } %s%% { opacity: 1; } "
-                "%s%% { opacity: 0; } 100%% { opacity: 0; } }"
-                % (name, fnum(pct * 0.2), fnum(pct * 0.8), fnum(pct)))
-            lines.append("%s { animation: pulse-%s %ss ease-in-out "
+                "@keyframes grow-%s { 0%% { width: 0; } "
+                "%s%% { width: %spx; } %s%% { width: %spx; } "
+                "%s%% { width: 0; } 100%% { width: 0; } }"
+                % (name, fnum(pct * 0.05), w, fnum(pct * 0.95), w,
+                   fnum(pct)))
+            lines.append("#tl-bar-%s { animation: grow-%s %ss ease-out "
                          "infinite; animation-delay: %ss; }"
-                         % (selector, name, fnum(TARGET_LOOP_SECONDS), delay))
+                         % (name, name, fnum(TARGET_LOOP_SECONDS), delay))
         else:
             lines.append(
-                "@keyframes flash-%s { 0%% { opacity: 0; } "
+                "@keyframes flash-tl-%s { 0%% { opacity: 0; } "
                 "%s%% { opacity: 1; } %s%% { opacity: 0; } "
                 "100%% { opacity: 0; } }"
                 % (name, fnum(pct * 0.3), fnum(pct)))
-            lines.append("%s { animation: flash-%s %ss linear "
+            lines.append("#tl-tick-%s { animation: flash-tl-%s %ss linear "
                          "infinite; animation-delay: %ss; }"
-                         % (selector, name, fnum(TARGET_LOOP_SECONDS), delay))
+                         % (name, name, fnum(TARGET_LOOP_SECONDS), delay))
     lines.append("</style>")
     return "\n".join(lines)
 
@@ -1339,7 +1282,7 @@ def outputs():
 
     All eight diagrams this file was built for: stop-ladder,
     pieces-topology, create-flow, the FLOW_START trio (start-states,
-    start-swimlane, start-circuit), watch-states and ports-scale, each in
+    start-swimlane, start-timeline), watch-states and ports-scale, each in
     both palettes. A future diagram only needs its own FLOW_* constant
     and two more yields here.
     """
@@ -1379,13 +1322,14 @@ def outputs():
               _document(FLOW_START, palette, swim_body, swim_layout,
                         "Swimlane view of abgal start", swim_style))
 
-    circuit_layout = _layout_circuit()
-    circuit_body = draw_circuit(FLOW_START, START_CHANNELS)
-    circuit_style = _circuit_extra_css(FLOW_START, START_CHANNELS)
+    timeline_layout = _layout_timeline()
+    timeline_body = draw_timeline(FLOW_START, START_CHANNELS)
+    timeline_style = _timeline_extra_css(FLOW_START, START_CHANNELS)
     for palette in ("light", "dark"):
-        yield ("docs/img/start-circuit-%s.svg" % palette,
-              _document(FLOW_START, palette, circuit_body, circuit_layout,
-                        "Wiring abgal start uses", circuit_style))
+        yield ("docs/img/start-timeline-%s.svg" % palette,
+              _document(FLOW_START, palette, timeline_body, timeline_layout,
+                        "Timeline of the real waits abgal start goes through",
+                        timeline_style))
 
     watch_layout = _layout(FLOW_WATCH)
     watch_body = draw_states(FLOW_WATCH)

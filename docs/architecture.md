@@ -66,19 +66,16 @@ other: the emulator process itself, adb polling for its console, a
 temperature watch subprocess, and a second poll for the boot to finish.
 Three diagrams show the same real flow three different ways.
 
-Circuit shows the real wiring: `abgal` and the four things it talks to,
-the kernel, the emulator, adb and the temperature watch, one wire per pair.
-A small pulse lights up each wire at the true moment that channel is used,
-so a channel used twice, adb for the console and again for the boot, is
-one wire that visibly pulses twice, not two separate wires. A fifth wire
-connects adb straight to the emulator, because what adb reports back to
-`abgal` is itself only what adb's own connection to the emulator's
-console tells it, not something adb knows on its own. That wire echoes
-the same two pulses the abgal-adb wire carries.
+Timeline lays the same real waits out on one shared axis, one row per
+actor: kernel, emulator, adb and the temperature watch. A bar is a real
+wait, drawn to scale, a tick is a step that just happens with no duration
+of its own. adb's row carries two bars, the console poll and the boot
+poll, so the same channel used twice reads as two bars in sequence on one
+row, not one wire pulsing twice.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/start-circuit-dark.svg">
-  <img src="img/start-circuit-light.svg" alt="abgal wired to kernel, emulator, adb and the temperature watch, and a fifth wire straight from adb to the emulator. A small dot on each wire lights up at the real moment that channel is used, twice on the abgal-adb wire and its adb-emulator echo, once for the console and once for the boot, and twice on the watch wire, starting it and then checking it is alive.">
+  <source media="(prefers-color-scheme: dark)" srcset="img/start-timeline-dark.svg">
+  <img src="img/start-timeline-light.svg" alt="Four rows, kernel, emulator, adb and the temperature watch, on a shared time axis. A tick on kernel for the preflight check, a tick on emulator for launch, a bar on adb up to 300 seconds for the console poll, a tick then a bar on the temperature watch for starting it and the two second settle wait, and a second bar on adb up to 300 seconds for the boot poll.">
 </picture>
 
 Swimlane lays the same real sequence out against a shared time axis, one
