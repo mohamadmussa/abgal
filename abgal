@@ -758,12 +758,21 @@ def wait_for_boot(serial, seconds):
 
 
 def start_one(args, name):
+    # Printed first, so a batch reads as one block per guest instead of all
+    # the checks running together before any name is said. A real start only
+    # says so once the checks below have passed, so a refusal never follows
+    # a line that already claimed the guest was starting.
+    if args.dry_run:
+        print("Would start %s" % name)
+
+    would_refuse = False
     pid = running_pid(name)
     if pid:
         # A dry run reports what a real start would refuse on and keeps going,
         # instead of stopping at the first one.
         if args.dry_run:
             field("Check", "already running as pid %d, start would refuse" % pid)
+            would_refuse = True
         else:
             return problem("%s is already running as pid %d." % (name, pid))
 
@@ -775,6 +784,10 @@ def start_one(args, name):
     template_name = mark.read_text().strip() if mark.is_file() else None
     wanted = memory_mb(config.get("hw.ramSize")) + OVERHEAD_MB
     free = available_mb()
+    if args.dry_run and free is not None:
+        # A dry run starts nothing, so the reading never drops as the batch
+        # goes on. This charges it for the guests before it that would.
+        free -= args.dry_run_committed
     if free is None:
         # No MemAvailable means no number to compare against, not that
         # memory is fine. --force already skips the check, so it skips the note too.
@@ -786,6 +799,7 @@ def start_one(args, name):
         if args.dry_run:
             field("Check", "needs about %d MB, %d MB free, %d MB reserved: "
                             "start would refuse without --force" % (wanted, free, RESERVE_MB))
+            would_refuse = True
         elif not args.force:
             return problem(
                 "%s needs about %d MB, %d MB are free, and %d MB stay reserved for\n"
@@ -796,9 +810,14 @@ def start_one(args, name):
         field("Check", "needs about %d MB, %d MB free, %d MB reserved: fits"
                         % (wanted, free, RESERVE_MB))
 
+    if args.dry_run and not would_refuse:
+        # This guest would really start, so the next one's check has to see
+        # less free memory, the same way a real batch would.
+        args.dry_run_committed += wanted
+
     # Guests created before the memory change still carry the old hw.ramSize,
     # and -lowram makes that stored value win over what the template says now.
-    if template_name:
+    if template_name and config.get("hw.ramSize") is not None:
         row = next((r for r in template_rows() if r["name"] == template_name), None)
         if row and memory_mb(config.get("hw.ramSize")) != int(row["ram"]):
             stored = memory_mb(config.get("hw.ramSize"))
@@ -842,7 +861,6 @@ def start_one(args, name):
     folder = LOGS / name
     logfile = folder / "emulator.log"
 
-    print(("Would start %s" if args.dry_run else "Starting %s") % name)
     field("Template", template_name or "unknown")
     field("Screen", "%sx%s at %s dpi" % (config.get("hw.lcd.width", "?"),
                                          config.get("hw.lcd.height", "?"),
@@ -859,7 +877,9 @@ def start_one(args, name):
         # and the command is only shown, not handed to Popen.
         print("Command:")
         print("  " + " ".join(shlex.quote(c) for c in command))
-        return 0
+        return 1 if would_refuse else 0
+
+    print("Starting %s" % name)
 
     folder.mkdir(parents=True, exist_ok=True)
 
@@ -947,6 +967,7 @@ def cmd_start(args):
     # Before any guest runs, so a bad value stops the start and not the watch.
     # A watch that cannot measure may take sensors' full ten seconds to die,
     # long after start said it runs, so the reading is taken here as well.
+    watch_refuses = False
     if not args.no_watch:
         watch_settings()
         temp = temperature(thermal_zone())
@@ -955,12 +976,17 @@ def cmd_start(args):
             # way start_one does for its own checks.
             if args.dry_run:
                 field("Watch", "no temperature measurable, start would refuse")
+                watch_refuses = True
             else:
                 fail("no processor temperature measurable, so no guest could be watched.\n"
                      "       Neither the x86_pkg_temp zone nor sensors gave a value.\n"
                      "       Start with --no-watch to run without the watch.")
         elif args.dry_run:
             field("Watch", "%s C, the watch could run" % temp)
+
+    # A dry run starts nothing, so this is the running total of what the
+    # guests already checked in this batch would have used, for start_one.
+    args.dry_run_committed = 0
 
     # One after another, never at the same time. Each guest is given the whole
     # sequence of its own start, including its own memory check, and the one
@@ -981,13 +1007,15 @@ def cmd_start(args):
             failed.append(name)
 
     if failed:
-        problem("%d of %d guests did not start: %s"
-                % (len(failed), len(names), ", ".join(failed)))
+        problem("%d of %d guests %s: %s"
+                % (len(failed), len(names),
+                   "would not start" if args.dry_run else "did not start",
+                   ", ".join(failed)))
     if unwatched and len(names) > 1:
         problem("%s runs without a temperature watch.%s"
                 % (unwatched, " Not started after it: %s" % ", ".join(skipped)
                    if skipped else ""))
-    return 1 if failed or unwatched else 0
+    return 1 if failed or unwatched or watch_refuses else 0
 
 
 def stop_one(name, serial, grace, say=print):
