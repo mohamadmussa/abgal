@@ -47,28 +47,25 @@ sudo usermod -aG kvm "$USER"
 A session that was open before the `usermod` does not know the group yet.
 `abgal start` notices that and starts through `sg kvm` for you.
 
-**2. Put an Android SDK into `sdk/`.** Everything lives inside the clone, the
-SDK included. `sdk/` is ignored by git. One command for this step is planned in
-[#11](https://github.com/mohamadmussa/abgal/issues/11); until then it is by hand.
-
-Download *Command line tools only* for Linux, version 23.0 or newer, from
-[developer.android.com/studio](https://developer.android.com/studio#command-line-tools-only), then:
+**2. Fetch the Android SDK into `sdk/`.**
 
 ```bash
-mkdir -p sdk/cmdline-tools
-unzip ~/Downloads/commandlinetools-linux-*_latest.zip -d sdk/cmdline-tools
-mv sdk/cmdline-tools/cmdline-tools sdk/cmdline-tools/latest
-sdk/cmdline-tools/latest/bin/android --no-metrics --sdk=sdk sdk install platform-tools emulator
+./abgal setup
 ```
 
-`android` is the Android CLI, which replaces `sdkmanager` from 23.0 on. Without
-`--no-metrics` it sends usage data to Google; `sdkmanager` does the same and
-has no switch for it. The licenses are accepted by the install itself. The
-first call puts the CLI into `~/.android/`, see
-[What AbGal is not](#what-abgal-is-not).
+`setup` names the Android SDK license and asks before it fetches anything.
+`--accept-licenses` answers for a CI job. It then downloads the command line
+tools named in `versions.conf`, checks their sha1, and installs the platform
+tools and the emulator with the Android CLI and `--no-metrics`. Everything
+lands in `sdk/`, which git ignores. The first call of the CLI puts the CLI
+itself into `~/.android/`, see [What AbGal is not](#what-abgal-is-not). At the
+end `setup` runs `abgal doctor`, which checks KVM, the SDK versions, the system
+images and the memory and says how to fix each line that is not ok.
 
 The system image for a template is fetched on the first `create` that needs
-it, the same way and with `--no-metrics`.
+it, the same way and with `--no-metrics`. On the machine AbGal is developed on,
+`setup` took one and a half minutes and the first `create` almost four
+(2026-09-24).
 
 **3. Create a guest and start it.**
 
@@ -107,6 +104,8 @@ Run from the clone as `./abgal`, or put the clone on your `PATH`.
 
 | Command | What it does |
 |---|---|
+| `abgal setup` | Fetches the SDK parts in `versions.conf` into `sdk/`, after asking about the license |
+| `abgal doctor` | Checks KVM, the SDK versions, the system images and the memory, and names a fix for each problem |
 | `abgal list` | Shows the templates in `devices.conf` and the guests on disk |
 | `abgal create <template>` | Creates one guest, named after the template |
 | `abgal create <template> --as ci --count 4` | Creates `ci-01` to `ci-04` |
