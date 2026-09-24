@@ -99,13 +99,12 @@ sdk/cmdline-tools/latest/bin/android --no-metrics --sdk="$PWD/sdk" sdk install e
 ERROR: device phone-1080x2400-480 is not listed in devices.xml.
 ```
 
-`avdmanager` reads screen descriptions only from `~/.android/devices.xml`.
+`avdmanager` reads screen descriptions only from `android-home/devices.xml`.
 `create` links that path to the file in the clone, but only when nothing is
-there yet. Android Studio writes its own file to the same place. See what is
-there:
+there yet. See what is there:
 
 ```bash
-ls -l ~/.android/devices.xml
+ls -l android-home/devices.xml
 ```
 
 If it is a file and not a link into the clone, either copy the `<d:device>`
@@ -213,22 +212,22 @@ own; its last start is in `logs/<guest>/emulator.log`.
 
 ## Files in your home folder
 
-AbGal keeps the SDK, the guests and the logs in the clone. The SDK tools
-write a few things to your home folder anyway. These are the ones seen on the
-machine AbGal is developed on:
+AbGal keeps the SDK, the guests, the logs and its own user files in the
+clone, under `sdk/`, `avd/`, `logs/` and `android-home/`. Only adb still
+writes to your home folder, because it reads no variable for its own
+folder, plus one file for the emulator console:
 
 | Path | Written by | What it is |
 |---|---|---|
-| `~/.android/bin/`, `~/.android/cli/` | the Android CLI | the CLI itself with its own Java runtime, about 250 MB |
-| `~/.android/adbkey`, `~/.android/adbkey.pub` | adb | the key adb uses to talk to devices |
-| `~/.android/adb.5037` | adb | which adb program runs the server on port 5037 |
-| `~/.android/devices.xml` | `abgal create` | a link to the clone's screen descriptions |
-| `~/.android/modem-nv-ram-<port>` | the emulator | modem state, one file per port |
-| `~/.android/emu-*`, `~/.android/cache/` | the emulator and the SDK tools | feature flags, update checks, repository lists |
-| `~/.android/userid`, `~/.android/analytics.settings` | the SDK tools | an id and the usage data setting |
+| `~/.android/adbkey` | adb | the private key adb uses to talk to devices |
+| `~/.android/adbkey.pub` | adb | the matching public key |
+| `~/.android/adb.<port>` | adb | which adb program runs the server on that port |
 | `~/.emulator_console_auth_token` | the emulator | the token for the emulator console |
 
-The tools write them again when they are missing. Leave the adb key alone
-if you also use a phone over USB: a new key means the phone has to allow this
-computer again. Keeping all of it in the clone is planned in
-[#32](https://github.com/mohamadmussa/abgal/issues/32).
+Everything else the SDK tools write lands in `android-home/` in the clone.
+
+If AbGal ran on this machine before `android-home/` existed, `~/.android/`
+can still hold old files: `bin/`, `cli/`, `devices.xml`, `emu-*`,
+`modem-nv-ram-*`, `userid` and `cache/`. AbGal no longer uses them, and they
+can be removed if no other Android tool, such as Android Studio, uses
+`~/.android`. Never remove the adb key.

@@ -16,12 +16,13 @@ command did something you did not expect.
 
 ## Where things live
 
-Everything AbGal writes lands inside the clone, apart from one link in the
-home folder, `~/.android/devices.xml`:
+Everything AbGal writes lands inside the clone. Nothing stays in the home
+folder but adb's own files and the console token:
 
 ```text
 abgal/
   sdk/                    the Android SDK, ignored by git
+  android-home/           user files of the SDK tools, ignored by git
   avd/
     dev.avd/
       config.ini          written by avdmanager, rewritten by every start
@@ -35,9 +36,11 @@ abgal/
 ```
 
 `abgal` finds the clone from its own path, so a clone works wherever it is
-put. It sets `ANDROID_HOME`, `ANDROID_SDK_ROOT` and `ANDROID_AVD_HOME` for
-every tool it calls. The SDK tools still keep files in `~/.android/`, the
-Android CLI among them, see [Troubleshooting](troubleshooting.md#files-in-your-home-folder).
+put. It sets `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_AVD_HOME`,
+`ANDROID_USER_HOME` and `ANDROID_EMULATOR_HOME` for every tool it calls. The
+emulator reads only `ANDROID_EMULATOR_HOME`, and adb reads neither, keeping
+its own files in `~/.android/`, see
+[Troubleshooting](troubleshooting.md#files-in-your-home-folder).
 
 ## Setup and doctor
 
@@ -66,7 +69,7 @@ itself.
 ## Create
 
 `abgal create <template> --as dev` reads the template line from
-`devices.conf` and links `~/.android/devices.xml` to the file in the clone,
+`devices.conf` and links `android-home/devices.xml` to the file in the clone,
 unless that file already exists. With `--recreate` it first asks once, naming
 every guest that exists and would be deleted. Without a terminal it refuses
 unless `--yes` is given. Then it takes these steps once per guest:
@@ -90,7 +93,7 @@ created when every value is what the template says. [Templates](templates.md)
 lists the values.
 
 Step 6 creates the folder first because `avdmanager` writes the guest to
-`~/.android/avd` without a word when `ANDROID_AVD_HOME` points at a folder
+`android-home/avd` without a word when `ANDROID_AVD_HOME` points at a folder
 that does not exist yet. Step 3 trusts the folder and not the exit code,
 because the Android CLI ends with 0 even for a package it does not know.
 
