@@ -9,70 +9,11 @@ one diagram can never drift apart in layout, only in color.
 
     tools/gen-architecture-diagrams.py
 
-Running it with no arguments regenerates every diagram, deterministically:
-the same flow always produces the same bytes.
-
-All eight diagrams this file was built for are wired up:
-
-  stop-ladder      the escalation `abgal stop` climbs through in
-                    stop_one() (abgal:1034-1067). A state ladder, drawn
-                    with draw_states(), animated: wait and poll steps
-                    loop to show time passing.
-  pieces-topology   the repo's pieces and how they relate, from
-                    docs/how-it-works.md. A hub and its spokes, drawn
-                    with draw_topology(), static: a "what relates to
-                    what" diagram has no time dimension to animate.
-  create-flow       the nine steps of `abgal create`, from "## Create" in
-                    docs/how-it-works.md. A plain state ladder again,
-                    drawn with draw_states(), static this time: no step
-                    has a documented duration, so none is animated.
-  start-states      the states `abgal start` moves a guest through, from
-                    wait_for_console()/wait_for_boot()/start_one()
-                    (abgal:742-952). A state ladder again, drawn with
-                    draw_states(), animated where the source has a real
-                    duration to show.
-  start-swimlane    the same FLOW_START, one column per actor instead of
-                    one column of steps, drawn with draw_swimlane(). A
-                    step's cross-lane line comes from START_CHANNELS, a
-                    lookup next to FLOW_START rather than a FIELDS
-                    column, since only this renderer and start-circuit
-                    need to know who a step talks to.
-  start-circuit     the same FLOW_START and the same START_CHANNELS
-                    again, this time as fixed wiring, abgal and its four
-                    actors, one wire per pair, drawn with draw_circuit().
-                    Where swimlane gives poll-console and poll-boot two
-                    separate rows because they happen at two separate
-                    moments, circuit gives them the one wire they really
-                    share, adb, and two differently timed pulses on it.
-  watch-states      the states `abgal watch` moves through, from
-                    cmd_watch() (abgal:1254-1330). A state ladder again,
-                    drawn with draw_states(); the one place the ladder
-                    shape does not literally fit is where the real loop
-                    has a back-edge (unreadable, retry), drawn as a plain
-                    labelled box stating the eventual consequence rather
-                    than a geometric arrow back up the column, and the one
-                    place another diagram is the real next step (the stop
-                    cascade) is a labelled pointer to stop-ladder instead
-                    of a redraw of it.
-  ports-scale       how the 16 emulator ports (abgal:970-978, 349-354)
-                    fill up as guests start, drawn with draw_ports(), its
-                    own layout: a row of the 16 real slots above a row of
-                    illustrative guest claims, not a ladder or a hub, and
-                    not draw_swimlane() either, despite the surface
-                    similarity to a lane diagram: there is no shared time
-                    axis or actor here, just slots and a sequence of
-                    claims, a genuinely different shape. Which slot is
-                    free at any real moment is runtime state, nowhere in
-                    the source, so this is the one diagram whose numbers
-                    are illustrative rather than measured, and it says so
-                    on its own face, not only in this docstring.
-
-Three renderers sharing one flow, start-states, start-swimlane and
-start-circuit, is why FLOW_* stays separate from how any one renderer
-draws it. A ninth diagram, if this file ever grows one, follows one of
-the shapes above (or, per ports-scale, proves it needs a shape of its
-own), a FLOW_* constant plus two more yields in outputs(), so adding one
-is an addition, not a rewrite of what is already here.
+Running it with no arguments regenerates all sixteen files, eight
+diagrams in light and dark, deterministically: the same flow always
+produces the same bytes. Which renderer draws which diagram, and the
+fact-by-fact derivation behind each flow, is tracked in issue #39, not
+repeated here.
 """
 
 import os
@@ -147,19 +88,10 @@ def flow(steps, edges):
 # ---------------------------------------------------------------- stop-ladder
 
 
-# Mirrors stop_one() in abgal (abgal:1034-1067) fact for fact:
-#   1. adb emu kill goes to the guest's serial.
-#   2. Poll once a second for the process to end, up to `grace` seconds.
-#      grace defaults to GRACE_SECONDS (abgal:68, 20 s) but is set by
-#      --grace (abgal:1672) the same way --timeout is for start, so the
-#      poll step says "the --grace default", not a fixed constant.
-#   3. Still running: SIGTERM to the pid, then a fixed 10 s wait
-#      (abgal:1061), then checked again.
-#   4. Still running: SIGKILL, then the same fixed 10 s wait, then checked
-#      again.
-#   5. Two terminals: "stopped", reachable after any of the three checks,
-#      or "still running", the hard failure abgal:1066 reports when even
-#      SIGKILL did not end it.
+# Mirrors stop_one() in abgal (abgal:1034-1067): adb kill, then an
+# escalation through SIGTERM and SIGKILL, a fixed wait after each, ending
+# in "stopped" or the hard failure abgal:1066 reports. Full derivation,
+# fact by fact against the source, is tracked in issue #39.
 FLOW_STOP = flow(
     steps=[
         step("kill", "abgal",
@@ -205,16 +137,11 @@ FLOW_STOP = flow(
 # ------------------------------------------------------------ pieces-topology
 
 
-# From docs/how-it-works.md, "The pieces" and "Where things live". Every
-# edge starts at abgal, the hub: it reads devices.conf and versions.conf,
-# links devices.xml in, creates avd/, writes logs/, and fetches into sdk/
-# and android-home/. bin/env.sh gets no edge: it is the one deliberate
-# non-relationship the page calls out, "`abgal` does not need it".
-#
-# actor carries each piece's own name here, not who acts (there is only
-# one actor, abgal); outcome carries bin/env.sh's note instead of a
-# terminal's outcome, both are just the FIELDS columns put to a second,
-# still-tabular use.
+# From docs/how-it-works.md, "The pieces" and "Where things live": abgal is
+# the hub, bin/env.sh is the one deliberate non-relationship the page calls
+# out. actor and outcome are repurposed here, the piece's own name and
+# bin/env.sh's note, not who acts or a terminal's outcome, since there is
+# only one actor in this flow.
 FLOW_PIECES = flow(
     steps=[
         step("abgal", "abgal",
@@ -252,15 +179,11 @@ FLOW_PIECES = flow(
 # --------------------------------------------------------------- create-flow
 
 
-# From docs/how-it-works.md, "## Create" (lines 69-98), the nine numbered
-# steps `abgal create <template> --as <guest>` takes once per guest. High
-# level on purpose: this is the chain, not every refusal along it, so it
-# is one straight column with no decisions and no shared box.
-#
-# No step gets a `seconds` value. create_one() has no documented per-step
-# timing anywhere in how-it-works.md or abgal, and the project's rule is
-# that every animation reflects a real, measured flow, so a flow with
-# nothing measured gets no animation, not an invented one.
+# From docs/how-it-works.md, "## Create" (lines 69-98): the nine steps
+# `abgal create <template> --as <guest>` takes, one straight column, no
+# decisions. No step carries a `seconds` value, because create_one() has
+# no documented per-step timing, and this project animates only a real,
+# measured wait, never an invented one.
 FLOW_CREATE = flow(
     steps=[
         step("refuse-name", "abgal",
@@ -306,35 +229,12 @@ FLOW_CREATE = flow(
 
 
 # Mirrors wait_for_console()/wait_for_boot()/start_one() (abgal:742-952)
-# and the actor vocabulary of the existing sequenceDiagram in
-# docs/how-it-works.md (lines 111-136: U=abgal start, K=kernel,
-# E=emulator, A=adb, W=temperature watch). Facts, re-verified against the
-# source, not carried over from an earlier, imprecise description:
-#   - wait_for_console polls serial_of() every 2 s (abgal:759), for up to
-#     `args.timeout` (--timeout, abgal:1663, default 300 s, the same
-#     CLI-overridable status as --grace for stop). 15 s (abgal:757) is
-#     not a second timeout, it is a dead-process short-circuit: if the
-#     guest's own process is already gone by then, waiting the rest of
-#     the 300 s would only delay the failure.
-#   - wait_for_boot polls getprop sys.boot_completed every 3 s
-#     (abgal:769), up to the SAME --timeout value (both call sites,
-#     abgal:911 and abgal:948, pass args.timeout).
-#   - the memory preflight (abgal:798, 811) refuses, without --force, if
-#     free MB < hw.ramSize + OVERHEAD_MB (900, abgal:64) + RESERVE_MB
-#     (1024, abgal:76).
-#   - WATCH_SETTLE (abgal:1172) is a fixed 2 s wait after the watch
-#     subprocess starts, then watch.poll() is checked once (abgal:935-936).
-#
-# The three ways this can end badly (console never answers, watch dies at
-# once, boot never completes) are three distinct decisions in the real
-# code, and three distinct terminals here too: merging them under one box
-# was tried and reverted, because "watch died" is not "did not finish",
-# the guest is running and finished booting in that branch, it only lost
-# its watch. Saying so for all three under one label would misstate that
-# one specifically. Every failure edge is labelled "no", the same word
-# stop-ladder's own exit edges use, which is what tells _layout's side
-# column apart from a plain next step (see the edge-label check there);
-# the specific reason lives on the terminal's own text instead.
+# and the actor vocabulary of the sequenceDiagram already in
+# docs/how-it-works.md. The three ways this can end badly (console never
+# answers, watch dies at once, boot never completes) stay three distinct
+# terminals, never merged into one, because each means something
+# different for the guest. Fact-by-fact derivation (poll intervals,
+# timeouts, thresholds) is tracked in issue #39, not repeated here.
 FLOW_START = flow(
     steps=[
         step("preflight", "abgal",
@@ -404,37 +304,15 @@ START_CHANNELS = {
 # -------------------------------------------------------------- watch-states
 
 
-# Mirrors cmd_watch() (abgal:1254-1330) fact for fact, re-verified against
-# the source, not carried over from an earlier, incomplete description:
-#   - watch_settings() (abgal:1189-1201) reads five env-overridable values:
-#     ABGAL_TEMP_WARN (default TEMP_WARN, 88 C), ABGAL_TEMP_STOP (default
-#     TEMP_STOP, 96 C), ABGAL_TEMP_INTERVAL (default 2 s), ABGAL_TEMP_GRACE
-#     (default GRACE_SECONDS, 20 s, fed straight into stop_one(), the same
-#     function stop-ladder draws), ABGAL_TEMP_WARMUP (default 120 s).
-#   - no temperature at all, right away: terminal, return 2 (abgal:1280-1282).
-#   - warmup: polls watched() every 5 s, up to warmup (abgal:1285-1291). Not
-#     appearing in time is a clean, expected exit, return 0, not a failure.
-#   - main loop, every `interval`, unbounded, no timeout unlike start's
-#     --timeout (abgal:1294-1329): no guests left, return 0 (abgal:1296-1298);
-#     unreadable four times running, return 2 (abgal:1302-1310), otherwise
-#     retries; at or above stop, stop_one() for every watched guest and
-#     return 1 (abgal:1314-1320), the same cascade stop-ladder already
-#     draws, so it is shown here as a labelled pointer to that diagram
-#     rather than redrawn; below stop, retries. The 3-degree warn/clear
-#     hysteresis (abgal:1322-1328) never changes the loop's shape or ends
-#     it, so it is left out here as noise for a control-flow diagram, not
-#     dropped from the docs, one sentence of prose covers it instead.
-#
-# "Retries" is drawn as a plain box stating the real, eventual consequence
-# ("aborts at 4 misses", "polls again") rather than as a geometric arrow
-# back up to main-poll. A true backedge would need _edge_markup's curve to
-# connect two same-column boxes safely, the exact shape that clipped
-# through a box the first time this file tried it (see FLOW_START's
-# history); reusing the proven "single labelled exit" pattern here instead
-# keeps this diagram inside geometry already verified clean, at the cost
-# of not drawing the loop as a literal line. Flagged for whoever reviews
-# this, in case a real loop-back arrow is wanted enough to justify that
-# follow-up work on _layout/_edge_markup.
+# Mirrors cmd_watch() (abgal:1254-1330): a temperature reading that must
+# succeed once, a warmup poll, then an unbounded main loop, ending in one
+# of several terminals or an escalation via the same stop_one() cascade
+# stop-ladder already draws, shown here as a labelled pointer rather than
+# redrawn. The real loop's back edge (unreadable, retry) is drawn as a
+# plain box stating the eventual consequence instead of a literal arrow
+# back up the column, the same proven pattern FLOW_START's own history
+# established. Fact-by-fact derivation (thresholds, intervals, exit
+# codes) is tracked in issue #39.
 FLOW_WATCH = flow(
     steps=[
         step("temp-check", "abgal",
@@ -494,34 +372,14 @@ FLOW_WATCH = flow(
 # --------------------------------------------------------------- ports-scale
 
 
-# The rule, verified fresh against abgal:842-844, 884, 970-978, 349-354 and
-# 645-654: --port only ever appends "-port N" to the emulator command when
-# given (abgal:843), the automatic case is entirely the emulator's own
-# doing, abgal does no bookkeeping of its own for it and only narrates it
-# as "chosen by the emulator" (abgal:884). An explicit --port is checked
-# before anything starts: even, 5554 to 5584 (16 values), one guest name
-# only (abgal:970-978). The range is not a preference, port_of() parses a
-# guest's adb serial as "emulator-<port>" (abgal:351-354), so a port
-# outside it is a guest adb genuinely cannot find. create's own padding
-# comment calls the same fact "the sixteen ports adb offers" (abgal:654),
-# independent confirmation in abgal's own words.
-#
-# Which of the 16 happens to be free at any moment is runtime state, not
-# a value in the source, so unlike every other flow in this file the
-# numbers below are illustrative, not measured. FLOW_PORTS says so on the
-# diagram itself (see draw_ports), not just in this comment: the label on
-# every one of the four guest boxes says "(example)", and a caption above
-# the slots says so again in full sentences. The 16 slots and their real
-# port numbers are the one part of this diagram that is fact, not
-# illustration, drawn identically to every other box in the document.
-#
-# The story: 13 slots already busy, a 14th guest's automatic pick takes
-# the first free one (5580), a 15th guest's explicit --port 5584 claims a
-# specific one ahead of a lower free port, a 16th guest's automatic pick
-# takes whatever is left (5582), and a 17th guest's automatic pick finds
-# nothing: abgal has no code path for that case (there is no seventeenth
-# branch anywhere in start_one()), it would simply surface as whatever
-# generic failure the emulator itself reports for a start with no port.
+# --port only ever appends "-port N" to the emulator command when given
+# (abgal:843); the automatic case is entirely the emulator's own doing,
+# and an explicit --port must be even, 5554 to 5584, the same range
+# port_of() parses a guest's adb serial back out of (abgal:351-354). Which
+# of the 16 is free at any moment is runtime state, not a source value,
+# so unlike every other flow here the guest claims below the slot row are
+# illustrative, not measured, stated as such on the diagram itself. Full
+# derivation is tracked in issue #39.
 PORT_LO, PORT_HI, PORT_STEP = 5554, 5584, 2
 
 # The three ports this illustrative sequence ends with claimed, and which
