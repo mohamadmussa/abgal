@@ -152,7 +152,9 @@ The emulator is always started with these flags:
 `--dry-run` prints this command line and what each check would say: whether
 the guest runs already, whether the memory fits, whether its `hw.ramSize`
 differs from its template, and whether the temperature watch can measure. It
-starts nothing and does not create the logs folder.
+starts nothing and does not create the logs folder. It ends with exit code 1
+when any check, for any guest, would have refused a real start, and with 0
+when every guest would have started.
 
 If the session does not have the `kvm` group yet, the whole command runs
 through `sg kvm -c`, and `start` says so.
