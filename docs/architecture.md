@@ -39,8 +39,8 @@ README.md already draws this as a state diagram, see
 [Lifecycle](../README.md#lifecycle), so it is not repeated here.
 `docs/README.md` carries a second, slightly different copy of the same
 diagram, missing the memory refusal and the exact temperature. That is a
-small, existing inconsistency between two files this page does not touch,
-tracked in issue #39, not fixed here.
+small, existing inconsistency between two files, left as it is here rather
+than fixed as a side effect of this page.
 
 ## Creating a guest
 
