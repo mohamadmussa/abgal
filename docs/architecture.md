@@ -70,11 +70,15 @@ Circuit shows the real wiring: `abgal` and the four things it talks to,
 the kernel, the emulator, adb and the temperature watch, one wire per pair.
 A small pulse lights up each wire at the true moment that channel is used,
 so a channel used twice, adb for the console and again for the boot, is
-one wire that visibly pulses twice, not two separate wires.
+one wire that visibly pulses twice, not two separate wires. A fifth wire
+connects adb straight to the emulator, because what adb reports back to
+`abgal` is itself only what adb's own connection to the emulator's
+console tells it, not something adb knows on its own. That wire echoes
+the same two pulses the abgal-adb wire carries.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/start-circuit-dark.svg">
-  <img src="img/start-circuit-light.svg" alt="abgal and four actors it talks to, kernel, emulator, adb and the temperature watch, wired with one line each. A small dot on each wire lights up at the real moment that channel is used, twice on the adb wire, once for the console and once for the boot, and twice on the watch wire, starting it and then checking it is alive.">
+  <img src="img/start-circuit-light.svg" alt="abgal wired to kernel, emulator, adb and the temperature watch, and a fifth wire straight from adb to the emulator. A small dot on each wire lights up at the real moment that channel is used, twice on the abgal-adb wire and its adb-emulator echo, once for the console and once for the boot, and twice on the watch wire, starting it and then checking it is alive.">
 </picture>
 
 Swimlane lays the same real sequence out against a shared time axis, one

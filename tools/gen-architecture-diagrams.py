@@ -604,11 +604,10 @@ def _layout_swimlane(flow_):
 
 
 # start-circuit only: a fixed two-above, two-below split of the same four
-# actors, in the same order LANE_ORDER already lists them. Unlike
-# pieces-topology's inputs/outputs, a circuit's wiring has no verb to
-# split by, so the partition is just written down instead of computed.
+# actors. adb sits under emulator so their real wire runs straight down
+# the right column, not through the abgal box.
 CIRCUIT_ABOVE = ("kernel", "emulator")
-CIRCUIT_BELOW = ("adb", "watch")
+CIRCUIT_BELOW = ("watch", "adb")
 FLASH_DOT_R = 4.0
 PULSE_DOT_R = 6.0
 
@@ -1024,16 +1023,21 @@ def _wire_fractions(timeline):
     return fractions
 
 
+# start-circuit only: adb's answers actually come from the emulator it
+# is watching, not from abgal. Steps that pulse the abgal-adb wire get a
+# matching echo dot on the adb-emulator wire below.
+CIRCUIT_ECHO_TARGET = "adb"
+
+
 def draw_circuit(flow_, channels):
-    """The body markup of a circuit diagram: one fixed wire per actor.
+    """The body markup of a circuit diagram: one fixed wire per actor,
+    plus the real adb-emulator wire.
 
     Nodes and wires are static, reusing _box_markup and
-    _topology_edge_markup exactly as pieces-topology draws them. What
-    moves is a small dot per channel-bearing step, riding at a fixed
-    point on its wire; _circuit_extra_css gives each one its own flash
-    (instant/action) or pulse (poll/wait) animation, timed by
-    _channel_timeline so two steps sharing one wire (both adb, both
-    watch) light up at different points in the shared loop, not at once.
+    _topology_edge_markup exactly as pieces-topology draws them. A small
+    dot rides each channel-bearing step's wire; _circuit_extra_css times
+    its flash or pulse. A step that targets adb also gets an echo dot on
+    the adb-emulator wire, same timing, id "dot-<step>-echo".
     """
     positions = _layout_circuit()["positions"]
     parts = [DEFS_MARKUP]
@@ -1042,6 +1046,7 @@ def draw_circuit(flow_, channels):
     for lane in LANE_ORDER:
         if lane != "abgal":
             parts.append(_topology_edge_markup(edge("abgal", lane), positions))
+    parts.append(_topology_edge_markup(edge("adb", "emulator"), positions))
 
     timeline = _channel_timeline(flow_, channels)
     fractions = _wire_fractions(timeline)
@@ -1053,6 +1058,16 @@ def draw_circuit(flow_, channels):
         cls = "wire-dot-pulse" if entry["sustained"] else "wire-dot-flash"
         parts.append('<circle id="dot-%s" class="%s" cx="%s" cy="%s" r="%s"/>'
                      % (entry["id"], cls, fnum(dot_x), fnum(dot_y), fnum(r)))
+        if entry["target"] == CIRCUIT_ECHO_TARGET:
+            ex, ey = (positions["adb"]["x"] + positions["adb"]["w"] / 2.0,
+                     positions["adb"]["y"])
+            fx, fy = (positions["emulator"]["x"] + positions["emulator"]["w"] / 2.0,
+                     positions["emulator"]["y"] + positions["emulator"]["h"])
+            echo_dot_x, echo_dot_y = ex + (fx - ex) * t, ey + (fy - ey) * t
+            parts.append('<circle id="dot-%s-echo" class="%s" cx="%s" '
+                         'cy="%s" r="%s"/>'
+                         % (entry["id"], cls, fnum(echo_dot_x),
+                            fnum(echo_dot_y), fnum(r)))
     return "\n".join(parts)
 
 
@@ -1268,24 +1283,29 @@ def _circuit_extra_css(flow_, channels):
     for entry in timeline:
         name, delay = entry["id"], fnum(entry["offset"])
         pct = entry["own"] / TARGET_LOOP_SECONDS * 100.0
+        # An echo dot, if this step has one, shares the same selector so
+        # it never drifts out of sync with the dot it mirrors.
+        selector = "#dot-%s" % name
+        if entry["target"] == CIRCUIT_ECHO_TARGET:
+            selector += ", #dot-%s-echo" % name
         if entry["sustained"]:
             lines.append(
                 "@keyframes pulse-%s { 0%% { opacity: 0; } "
                 "%s%% { opacity: 1; } %s%% { opacity: 1; } "
                 "%s%% { opacity: 0; } 100%% { opacity: 0; } }"
                 % (name, fnum(pct * 0.2), fnum(pct * 0.8), fnum(pct)))
-            lines.append("#dot-%s { animation: pulse-%s %ss ease-in-out "
+            lines.append("%s { animation: pulse-%s %ss ease-in-out "
                          "infinite; animation-delay: %ss; }"
-                         % (name, name, fnum(TARGET_LOOP_SECONDS), delay))
+                         % (selector, name, fnum(TARGET_LOOP_SECONDS), delay))
         else:
             lines.append(
                 "@keyframes flash-%s { 0%% { opacity: 0; } "
                 "%s%% { opacity: 1; } %s%% { opacity: 0; } "
                 "100%% { opacity: 0; } }"
                 % (name, fnum(pct * 0.3), fnum(pct)))
-            lines.append("#dot-%s { animation: flash-%s %ss linear "
+            lines.append("%s { animation: flash-%s %ss linear "
                          "infinite; animation-delay: %ss; }"
-                         % (name, name, fnum(TARGET_LOOP_SECONDS), delay))
+                         % (selector, name, fnum(TARGET_LOOP_SECONDS), delay))
     lines.append("</style>")
     return "\n".join(lines)
 
