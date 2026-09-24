@@ -618,6 +618,9 @@ def cmd_list(args):
 
 
 def cmd_create(args):
+    if args.yes and not args.recreate:
+        fail("--yes only applies to --recreate.")
+
     # Without a template this shows what there is to choose from. The names
     # are long on purpose, so being asked to type one from memory is the
     # wrong way round: the program knows them and says them.
@@ -657,12 +660,22 @@ def cmd_create(args):
         # One question covers the whole batch, so a --count run does not
         # ask sixteen times over.
         existing = [n for n in names if guest_folder(n).is_dir()]
+        # Recreating a running guest loses whatever it holds, so this is a
+        # refusal and not something --yes or a prompt can wave through.
+        running = [n for n in existing if running_pid(n)]
+        if running:
+            fail("still running: %s. Stop first, for example: abgal stop -n %s"
+                 % (", ".join(running), running[0]))
         if existing and not args.yes:
             if not sys.stdin.isatty():
                 fail("nothing to ask on. Pass --yes to delete %s unattended."
                      % ", ".join(existing))
-            answer = input("Delete %s and its disk? This cannot be undone. [y/N] "
-                            % ", ".join(existing))
+            try:
+                answer = input("Delete %s and its disk? This cannot be undone. [y/N] "
+                                % ", ".join(existing))
+            except EOFError:
+                print()
+                answer = ""
             if answer.strip().lower() not in ("y", "yes"):
                 print("Nothing was deleted.")
                 return 1
