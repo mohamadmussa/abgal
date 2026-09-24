@@ -60,6 +60,12 @@ def run(args):
     return subprocess.run(args, cwd=ROOT, capture_output=True)
 
 
+def fail(message):
+    """Stop because the scan could not run. That is exit code 2, not a finding."""
+    print(message, file=sys.stderr)
+    sys.exit(2)
+
+
 def load_extra():
     """Read the local deny list. Absent is allowed, empty is not a finding."""
     out = []
@@ -71,12 +77,12 @@ def load_extra():
             if not line:
                 continue
             if "=" not in line:
-                sys.exit("%s line %d: expected 'label = regex'" % (WORDS, n))
+                fail("%s line %d: expected 'label = regex'" % (WORDS, n))
             label, expr = (s.strip() for s in line.split("=", 1))
             try:
                 out.append((label, re.compile(expr.encode(), re.IGNORECASE)))
             except re.error as err:
-                sys.exit("%s line %d: %s" % (WORDS, n, err))
+                fail("%s line %d: %s" % (WORDS, n, err))
     return out
 
 
@@ -121,9 +127,9 @@ def on_disk():
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "--staged"
     if mode not in ("--staged", "--all", "--tree"):
-        sys.exit(__doc__)
+        fail(__doc__)
     if mode in ("--staged", "--all") and not in_repo():
-        sys.exit("not a git repository, use --tree")
+        fail("not a git repository, use --tree")
 
     checks = [(label, re.compile(expr)) for label, expr in PATTERNS]
     checks += load_extra()
