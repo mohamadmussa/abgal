@@ -123,6 +123,18 @@ The check counts the guest's `hw.ramSize`, 900 MB on top and 1024 MB for the
 machine. Stop a guest, give the template less `ram`, or start with `--force`
 and watch `abgal status`. Below 1536 MB a guest swaps.
 
+```text
+Note: dev has 4096 MB in its config.ini, its template
+      phone-1080x2400-480-api35-x86_64 says 1536 MB.
+      It starts with 4096 MB. To bring it in line, keeping its disk:
+      abgal create phone-1080x2400-480-api35-x86_64 --as dev
+```
+
+This is not an error, and the guest starts anyway with the value it already
+has. It means the guest was created before `ram` changed in `devices.conf`
+and still carries the old number. Run the named `abgal create` command to
+rewrite `hw.ramSize` from the template without losing the disk.
+
 ## The guest did not come up
 
 ```text
