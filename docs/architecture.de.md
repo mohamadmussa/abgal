@@ -44,8 +44,7 @@ zeichnet das schon als Zustandsdiagramm, siehe
 `docs/README.md` trägt eine zweite, leicht abweichende Kopie desselben
 Diagramms, der die Speicherverweigerung und die genaue Temperatur fehlen.
 Das ist eine kleine, bereits bestehende Unstimmigkeit zwischen zwei
-Dateien, die diese Seite nicht anfasst, festgehalten in Issue #39, hier
-nicht behoben.
+Dateien, hier so belassen statt als Nebeneffekt dieser Seite behoben.
 
 ## Ein AVD erstellen
 
