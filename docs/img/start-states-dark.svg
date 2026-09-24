@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 580.00 992.00" width="580.00" height="992.00" role="img" aria-label="States abgal start moves a guest through">
+<style>
+:root {
+  --bg: #1b1b1f;
+  --fg: #e9e9ee;
+  --muted: #a3a3ad;
+  --box-fill: #2a2a30;
+  --box-stroke: #c7c7d1;
+  --decision-fill: #26283a;
+  --track: #3c3c44;
+  --accent: #7ea2ff;
+  --ok-fill: #173524;
+  --ok-stroke: #4ade80;
+  --bad-fill: #3a1c1c;
+  --bad-stroke: #f87171;
+  --arrow: #c7c7d1;
+}
+svg { background: var(--bg); }
+text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
+.label-actor { font-size: 9px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.label-main { font-size: 11.5px; }
+.label-duration { font-size: 10px; font-style: italic; fill: var(--muted); }
+.label-edge { font-size: 10px; fill: var(--muted); }
+.label-note { font-size: 10px; font-style: italic; fill: var(--muted); }
+.box, .box-instant, .box-action { fill: var(--box-fill); stroke: var(--box-stroke); stroke-width: 1.5; }
+.box-decision { fill: var(--decision-fill); stroke: var(--box-stroke); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.box-ok { fill: var(--ok-fill); stroke: var(--ok-stroke); stroke-width: 2; }
+.box-bad { fill: var(--bad-fill); stroke: var(--bad-stroke); stroke-width: 2; }
+.bar-track { fill: var(--track); }
+.bar-fill { fill: var(--accent); }
+.edge { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+.arrowhead { fill: var(--arrow); }
+@keyframes bar-fill { from { width: 0; } to { width: 220.00px; } }
+#bar-fill-poll-console { animation: bar-fill 3.99s linear infinite; }
+#bar-fill-wait-settle { animation: bar-fill 0.40s linear infinite; }
+#bar-fill-poll-boot { animation: bar-fill 3.99s linear infinite; }
+</style>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+</marker>
+</defs>
+<g id="step-preflight">
+<rect class="box box-instant" x="30.00" y="30.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="44.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="58.00" text-anchor="middle">refuses a running guest, or memory</text>
+<text class="label-main" x="160.00" y="70.00" text-anchor="middle">under ramSize + 900 + 1024 MB</text>
+</g>
+<g id="step-launch">
+<rect class="box box-action" x="30.00" y="126.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="140.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="154.00" text-anchor="middle">starts the emulator, detached,</text>
+<text class="label-main" x="160.00" y="166.00" text-anchor="middle">logs to logs/&lt;guest&gt;/emulator.log</text>
+</g>
+<g id="step-poll-console">
+<rect class="box box-poll" x="30.00" y="222.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="236.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="250.00" text-anchor="middle">asks adb every 2 s who this is, up</text>
+<text class="label-main" x="160.00" y="262.00" text-anchor="middle">to --timeout, unless gone by 15 s</text>
+<text class="label-duration" x="160.00" y="276.00" text-anchor="middle">up to 300 s</text>
+<rect class="bar-track" x="50.00" y="282.00" width="220.00" height="6.00" rx="3" ry="3"/>
+<rect id="bar-fill-poll-console" class="bar-fill" x="50.00" y="282.00" width="0" height="6.00" rx="3" ry="3"/>
+</g>
+<g id="step-decision-console">
+<rect class="box box-decision" x="30.00" y="318.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="332.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="346.00" text-anchor="middle">console answered?</text>
+</g>
+<g id="step-fail-console">
+<rect class="box box-terminal box-bad" x="350.00" y="318.00" width="200.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-actor" x="450.00" y="332.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="450.00" y="346.00" text-anchor="middle">did not come up. Last log</text>
+<text class="label-main" x="450.00" y="358.00" text-anchor="middle">lines are printed.</text>
+</g>
+<g id="step-start-watch">
+<rect class="box box-action" x="30.00" y="414.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="428.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="442.00" text-anchor="middle">starts abgal watch as a</text>
+<text class="label-main" x="160.00" y="454.00" text-anchor="middle">subprocess, unless --no-watch</text>
+</g>
+<g id="step-wait-settle">
+<rect class="box box-wait" x="30.00" y="510.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="524.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="538.00" text-anchor="middle">waits for the watch to settle,</text>
+<text class="label-main" x="160.00" y="550.00" text-anchor="middle">then checks it is alive</text>
+<text class="label-duration" x="160.00" y="564.00" text-anchor="middle">2 s</text>
+<rect class="bar-track" x="50.00" y="570.00" width="220.00" height="6.00" rx="3" ry="3"/>
+<rect id="bar-fill-wait-settle" class="bar-fill" x="50.00" y="570.00" width="0" height="6.00" rx="3" ry="3"/>
+</g>
+<g id="step-decision-watch">
+<rect class="box box-decision" x="30.00" y="606.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="620.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="634.00" text-anchor="middle">watch still alive?</text>
+</g>
+<g id="step-fail-watch">
+<rect class="box box-terminal box-bad" x="350.00" y="606.00" width="200.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-actor" x="450.00" y="620.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="450.00" y="634.00" text-anchor="middle">watch died at once. Guest</text>
+<text class="label-main" x="450.00" y="646.00" text-anchor="middle">keeps running without it.</text>
+</g>
+<g id="step-poll-boot">
+<rect class="box box-poll" x="30.00" y="702.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="716.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="730.00" text-anchor="middle">asks adb every 3 s for</text>
+<text class="label-main" x="160.00" y="742.00" text-anchor="middle">boot_completed, up to --timeout</text>
+<text class="label-duration" x="160.00" y="756.00" text-anchor="middle">up to 300 s</text>
+<rect class="bar-track" x="50.00" y="762.00" width="220.00" height="6.00" rx="3" ry="3"/>
+<rect id="bar-fill-poll-boot" class="bar-fill" x="50.00" y="762.00" width="0" height="6.00" rx="3" ry="3"/>
+</g>
+<g id="step-decision-boot">
+<rect class="box box-decision" x="30.00" y="798.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="812.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="826.00" text-anchor="middle">booted in time?</text>
+</g>
+<g id="step-fail-boot">
+<rect class="box box-terminal box-bad" x="350.00" y="798.00" width="200.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-actor" x="450.00" y="812.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="450.00" y="826.00" text-anchor="middle">did not report a completed</text>
+<text class="label-main" x="450.00" y="838.00" text-anchor="middle">boot in --timeout s.</text>
+</g>
+<g id="step-ready">
+<rect class="box box-terminal box-ok" x="30.00" y="894.00" width="260.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-actor" x="160.00" y="908.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="922.00" text-anchor="middle">ready</text>
+</g>
+<line class="edge" x1="160.00" y1="98.00" x2="160.00" y2="126.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="160.00" y1="194.00" x2="160.00" y2="222.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="160.00" y1="290.00" x2="160.00" y2="318.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="160.00" y1="386.00" x2="160.00" y2="414.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="170.00" y="400.00" text-anchor="middle">yes</text>
+<path class="edge" d="M 290.00 352.00 C 320.00 352.00, 320.00 352.00, 350.00 352.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="300.00" y="344.00" text-anchor="middle">no</text>
+<line class="edge" x1="160.00" y1="482.00" x2="160.00" y2="510.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="160.00" y1="578.00" x2="160.00" y2="606.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="160.00" y1="674.00" x2="160.00" y2="702.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="170.00" y="688.00" text-anchor="middle">yes</text>
+<path class="edge" d="M 290.00 640.00 C 320.00 640.00, 320.00 640.00, 350.00 640.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="300.00" y="632.00" text-anchor="middle">no</text>
+<line class="edge" x1="160.00" y1="770.00" x2="160.00" y2="798.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="160.00" y1="866.00" x2="160.00" y2="894.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="170.00" y="880.00" text-anchor="middle">yes</text>
+<path class="edge" d="M 290.00 832.00 C 320.00 832.00, 320.00 832.00, 350.00 832.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="300.00" y="824.00" text-anchor="middle">no</text>
+</svg>
