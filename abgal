@@ -2,10 +2,12 @@
 """AbGal. Android Batch Guests, Accelerated and Local.
 
 One program for the whole life of a guest: create it from a template, start
-it, look at it, stop it again. Everything lives under the folder this file
-sits in, so a clone is a complete installation and nothing is written to the
-machine outside it.
+it, look at it, stop it again. The SDK, the guests and the logs live under the
+folder this file sits in. The SDK tools still keep some files in ~/.android,
+the Android CLI among them, see docs/troubleshooting.md.
 
+  abgal setup                         fetch the SDK into sdk/
+  abgal doctor                        check the machine and the SDK
   abgal list                          templates and guests
   abgal create <template>             one guest, named after the template
   abgal create <template> --count 10  ten guests, numbered
@@ -21,14 +23,20 @@ nothing to package: the file is the program.
 
 import argparse
 import grp
+import hashlib
 import os
+import platform
+import pwd
 import re
 import secrets
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
 import time
+import urllib.request
+import zipfile
 from pathlib import Path
 
 HOME = Path(__file__).resolve().parent
@@ -626,7 +634,8 @@ def cmd_create(args):
     if not AVDMANAGER.is_file() or not ANDROID_CLI.is_file():
         fail("avdmanager or android is not under %s.\n"
              "       The command line tools 23.0 or newer belong in"
-             " sdk/cmdline-tools/latest." % AVDMANAGER.parent)
+             " sdk/cmdline-tools/latest.\n"
+             "       Run ./abgal doctor to see what is missing." % AVDMANAGER.parent)
 
     base = args.after or args.template
     if args.count == 1:
@@ -1212,10 +1221,265 @@ def cmd_watch(args):
         time.sleep(interval)
 
 
+# ------------------------------------------------------------- setup, doctor
+
+
+VERSION_FIELDS = ("part", "minimum", "source", "sha1")
+
+LICENSE_URL = "https://developer.android.com/studio/terms"
+
+
+def version_rows():
+    """Every line of versions.conf, as a dict of its four columns."""
+    found = []
+    try:
+        text = (HOME / "versions.conf").read_text()
+    except OSError:
+        return found
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = [f.strip() for f in line.split("|")]
+        fields += [""] * (len(VERSION_FIELDS) - len(fields))
+        found.append(dict(zip(VERSION_FIELDS, fields)))
+    return found
+
+
+def revision(text):
+    """A revision as numbers, so that 37.1.11 counts as newer than 37.1.9."""
+    found = re.match(r"[0-9.]+", text or "")
+    return tuple(int(n) for n in found.group(0).split(".") if n) if found else ()
+
+
+def installed(part):
+    """The revision of a part under sdk/, or None when it is not there."""
+    return read_ini(SDK / part / "source.properties").get("Pkg.Revision")
+
+
+def too_old(row):
+    found = installed(row["part"])
+    return found is not None and revision(found) < revision(row["minimum"])
+
+
+def doctor_checks():
+    """Every check as state, subject, detail and the command that fixes it.
+
+    A state of "later" is not a problem: the system image is fetched by the
+    first create that needs it.
+    """
+    checks = []
+
+    machine = platform.machine()
+    if sys.platform.startswith("linux") and machine == "x86_64":
+        checks.append(("ok", "Linux on x86_64", "", ""))
+    else:
+        checks.append(("no", "Linux on x86_64", "%s on %s" % (platform.system(), machine),
+                       "macOS and Windows are planned in issue #13"))
+
+    kvm = Path("/dev/kvm")
+    user = pwd.getpwuid(os.getuid())
+    try:
+        group = grp.getgrnam("kvm")
+        granted = user.pw_name in group.gr_mem or user.pw_gid == group.gr_gid
+    except KeyError:
+        granted = False
+    if not kvm.exists():
+        checks.append(("missing", "/dev/kvm", "no hardware acceleration",
+                       "switch on virtualization in the firmware, then load kvm_intel or kvm_amd"))
+    elif os.access(kvm, os.R_OK | os.W_OK):
+        checks.append(("ok", "/dev/kvm", "usable by this session", ""))
+    elif granted:
+        # The same gap start bridges with "sg kvm", so it is not a problem.
+        checks.append(("ok", "/dev/kvm", "kvm group granted, start uses sg kvm until the next login", ""))
+    else:
+        checks.append(("missing", "/dev/kvm", "%s is not in the kvm group" % user.pw_name,
+                       'sudo usermod -aG kvm "$USER"'))
+
+    rows = version_rows()
+    if not rows:
+        checks.append(("missing", "versions.conf", "missing or empty", "git checkout versions.conf"))
+    for row in rows:
+        found = installed(row["part"])
+        if found is None:
+            checks.append(("missing", row["part"], "", "./abgal setup"))
+        elif too_old(row):
+            checks.append(("too old", row["part"], "%s, needs %s" % (found, row["minimum"]),
+                           "move sdk/%s aside, then ./abgal setup" % row["part"]))
+        else:
+            checks.append(("ok", row["part"], found, ""))
+
+    templates_found = template_rows()
+    seen = set()
+    for row in templates_found:
+        if row["image"] in seen:
+            continue
+        seen.add(row["image"])
+        folder = SDK / "system-images" / ("android-" + row["api"]) / row["tag"] / row["abi"]
+        found = installed(folder.relative_to(SDK))
+        if found is None:
+            checks.append(("later", row["image"], "the first create fetches it", ""))
+        else:
+            checks.append(("ok", row["image"], found, ""))
+
+    free = available_mb()
+    sizes = [memory_mb(row["ram"]) for row in templates_found if memory_mb(row["ram"])]
+    if free is None:
+        checks.append(("missing", "memory", "MemAvailable is not in /proc/meminfo", ""))
+    elif sizes:
+        need = min(sizes) + OVERHEAD_MB + RESERVE_MB
+        detail = "%d MB free, the smallest guest needs %d MB" % (free, need)
+        if free >= need:
+            checks.append(("ok", "memory", detail, ""))
+        else:
+            checks.append(("too low", "memory", detail, "stop a guest, or close programs"))
+    return checks
+
+
+def cmd_doctor(args):
+    print("Checking %s against versions.conf and devices.conf:" % HOME)
+    checks = doctor_checks()
+    width = max(len(c[1]) for c in checks)
+    for state, subject, detail, fix in checks:
+        print(("  %-8s %-*s  %s" % (state, width, subject, detail)).rstrip())
+        if fix:
+            print("  %-8s fix: %s" % ("", fix))
+    bad = [c for c in checks if c[0] not in ("ok", "later")]
+    print()
+    if bad:
+        print("%d of %d checks need attention." % (len(bad), len(checks)))
+        return 1
+    print("Ready. Create a guest with: ./abgal create <template>")
+    return 0
+
+
+def accept_license(parts):
+    """Asks once for the license every part of the SDK comes under."""
+    print("The Android SDK comes under the Android Software Development Kit License\n"
+          "Agreement: %s\n\n"
+          "Fetched under it: %s.\n"
+          "The Android CLI accepts the same license for every part it installs,\n"
+          "now and in a later create. On first use it puts itself, about 250 MB\n"
+          "with its own Java runtime, into ~/.android.\n" % (LICENSE_URL, ", ".join(parts)))
+    if not sys.stdin.isatty():
+        fail("nothing fetched, there is nobody to ask.\n"
+             "       Read the license, then run: ./abgal setup --accept-licenses")
+    try:
+        answer = input("Accept it? [y/N] ")
+    except EOFError:
+        answer = ""
+    return answer.strip().lower() in ("y", "yes")
+
+
+def fetch_zip(row):
+    """Fetches a zip named in versions.conf, checks it and unpacks it into sdk/.
+
+    The download and the unpacked folder sit next to the target and only take
+    its name at the end, so an interrupted setup leaves no half part behind.
+    """
+    target = SDK / row["part"]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    download = target.parent / ".abgal-download.zip"
+    unpack = target.parent / ".abgal-unpack"
+    print("Fetching %s" % row["source"])
+    digest = hashlib.sha1()
+    try:
+        with urllib.request.urlopen(row["source"], timeout=60) as response, \
+                open(download, "wb") as out:
+            total = int(response.headers.get("Content-Length") or 0)
+            done, shown = 0, 0
+            while True:
+                chunk = response.read(1 << 20)
+                if not chunk:
+                    break
+                out.write(chunk)
+                digest.update(chunk)
+                done += len(chunk)
+                if total and done * 10 // total > shown:
+                    shown = done * 10 // total
+                    print("  %3d%%  %d MB" % (shown * 10, done >> 20))
+    except (OSError, ValueError) as error:
+        download.unlink(missing_ok=True)
+        problem("could not fetch %s:\n       %s" % (row["source"], error))
+        return False
+    if digest.hexdigest() != row["sha1"]:
+        download.unlink()
+        problem("the download has sha1 %s, versions.conf expects %s.\n"
+                "       Nothing was unpacked." % (digest.hexdigest(), row["sha1"]))
+        return False
+
+    shutil.rmtree(unpack, ignore_errors=True)
+    try:
+        with zipfile.ZipFile(download) as archive:
+            for info in archive.infolist():
+                path = archive.extract(info, unpack)
+                # zipfile drops the permission bits, and adb without its x bit
+                # is a file that cannot run.
+                mode = info.external_attr >> 16 & 0o777
+                if mode:
+                    os.chmod(path, mode)
+        inner = list(unpack.iterdir())
+        (inner[0] if len(inner) == 1 and inner[0].is_dir() else unpack).rename(target)
+    except (OSError, zipfile.BadZipFile) as error:
+        problem("could not unpack into sdk/%s:\n       %s\n"
+                "       If the folder exists without source.properties, move it aside."
+                % (row["part"], error))
+        return False
+    finally:
+        shutil.rmtree(unpack, ignore_errors=True)
+        download.unlink(missing_ok=True)
+    print("Unpacked into sdk/%s" % row["part"])
+    return True
+
+
+def cmd_setup(args):
+    rows = version_rows()
+    if not rows:
+        fail("versions.conf is missing or empty, so there is nothing to fetch.")
+
+    # A folder setup did not make may hold somebody's work, so an old one is
+    # named and left for its owner to move.
+    for row in rows:
+        if too_old(row):
+            fail("sdk/%s has %s, and AbGal needs %s or newer.\n"
+                 "       Move the folder aside and run setup again."
+                 % (row["part"], installed(row["part"]), row["minimum"]))
+
+    missing = [row for row in rows if installed(row["part"]) is None]
+    if not missing:
+        print("Every part in versions.conf is already in sdk/.")
+    else:
+        if not args.accept_licenses and not accept_license([r["part"] for r in missing]):
+            fail("nothing fetched, the license was not accepted.")
+        for row in missing:
+            if row["source"] != "android" and not fetch_zip(row):
+                return 1
+        packages = [row["part"] for row in missing if row["source"] == "android"]
+        if packages:
+            if not ANDROID_CLI.is_file():
+                fail("%s is missing, so %s cannot be installed."
+                     % (ANDROID_CLI, ", ".join(packages)))
+            print("Installing %s, which takes a few minutes:" % ", ".join(packages))
+            command = [ANDROID_CLI, "--no-metrics", "--sdk=%s" % SDK, "sdk", "install"]
+            run_tool(command + packages, quiet=True)
+            # The CLI ends with 0 even for a package it does not know, so
+            # only the folder counts.
+            lost = [p for p in packages if installed(p) is None]
+            if lost:
+                fail("the Android CLI did not install %s." % ", ".join(lost))
+    # The exit code says whether fetching worked. What doctor finds, such as
+    # a CI runner without /dev/kvm, is shown but does not fail setup.
+    print()
+    cmd_doctor(args)
+    return 0
+
+
 # --------------------------------------------------------------------- entry
 
 
 EXAMPLES = """examples:
+  abgal setup
+  abgal doctor
   abgal list
   abgal create phone-1080x2400-480-api35-x86_64 --as dev --count 10
   abgal start -n dev-01
@@ -1234,6 +1498,14 @@ def build_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subs = parser.add_subparsers(dest="command")
+
+    setup = subs.add_parser("setup", help="fetch the SDK parts in versions.conf into sdk/")
+    setup.add_argument("--accept-licenses", action="store_true",
+                       help="accept the Android SDK license without being asked, for CI")
+    setup.set_defaults(run=cmd_setup)
+
+    doctor = subs.add_parser("doctor", help="check the machine and the SDK, say what to fix")
+    doctor.set_defaults(run=cmd_doctor)
 
     listing = subs.add_parser("list", help="show the templates and the guests")
     listing.set_defaults(run=cmd_list)
@@ -1313,13 +1585,15 @@ def main():
     if not getattr(args, "run", None):
         parser.print_help()
         return 0
-    # "list" reads two text files and works on a fresh clone. Everything else
-    # talks to the SDK, and a missing SDK there is worth saying plainly
-    # instead of letting adb fail with a path nobody recognises.
-    if args.command != "list" and (not ADB.is_file() or not EMULATOR.is_file()):
+    # "list" reads two text files, setup and doctor are what a fresh clone
+    # runs first. Everything else talks to the SDK, and a missing SDK there is
+    # worth saying plainly instead of letting adb fail with a path nobody
+    # recognises.
+    if args.command not in ("list", "setup", "doctor") and (
+            not ADB.is_file() or not EMULATOR.is_file()):
         fail("the Android SDK is not under %s.\n"
-             "       Both platform-tools/adb and emulator/emulator have to be there."
-             % SDK)
+             "       Both platform-tools/adb and emulator/emulator have to be there.\n"
+             "       Run ./abgal setup to fetch them." % SDK)
     return args.run(args)
 
 

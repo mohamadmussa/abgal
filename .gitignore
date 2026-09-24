@@ -1,4 +1,4 @@
-# Android SDK, downloaded by tools/fetch-prerequisites.sh, several gigabytes.
+# Android SDK, fetched by abgal setup and abgal create, several gigabytes.
 sdk/
 
 # Virtual device images and their runtime state, several gigabytes.

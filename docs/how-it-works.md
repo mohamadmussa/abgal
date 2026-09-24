@@ -12,6 +12,7 @@ command did something you did not expect.
 | `bin/env.sh` | Bash, sourced | The SDK paths for a shell of your own. `abgal` does not need it |
 | `devices.conf` | Text, one line per template | What a guest is made from |
 | `devices.xml` | XML | The screens the templates refer to |
+| `versions.conf` | Text, one line per SDK part | What `setup` fetches and the oldest revision `doctor` accepts |
 
 ## Where things live
 
@@ -37,6 +38,30 @@ abgal/
 put. It sets `ANDROID_HOME`, `ANDROID_SDK_ROOT` and `ANDROID_AVD_HOME` for
 every tool it calls. The SDK tools still keep files in `~/.android/`, the
 Android CLI among them, see [Troubleshooting](troubleshooting.md#files-in-your-home-folder).
+
+## Setup and doctor
+
+`abgal setup` reads `versions.conf` and fetches only the parts that are not
+under `sdk/` yet. Before the first download it names the Android SDK license
+and asks, unless `--accept-licenses` is given. A zip is downloaded next to its
+target, checked against its sha1, unpacked with the permission bits kept, and
+only then renamed into place, so an interrupted setup leaves no half part.
+The platform tools and the emulator come from the Android CLI, and only their
+folders count as proof, for the same reason as in [Create](#create). A part
+older than its minimum is named and left alone. `setup` ends by running
+`doctor`, but its exit code only says whether fetching worked, so a CI runner
+without `/dev/kvm` can still fetch the SDK.
+
+`abgal doctor` prints one line per check, with one of six states:
+
+| State | Meaning |
+|---|---|
+| `ok` | nothing to do |
+| `later` | a system image that the first `create` fetches by itself |
+| `missing`, `too old`, `too low`, `no` | a problem, with a fix on the next line where there is one |
+
+It ends with exit code 1 when a line is a problem, and never runs `sudo`
+itself.
 
 ## Create
 
