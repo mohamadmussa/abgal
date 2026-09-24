@@ -58,9 +58,10 @@ A session that was open before the `usermod` does not know the group yet.
 tools named in `versions.conf`, checks their sha1, and installs the platform
 tools and the emulator with the Android CLI and `--no-metrics`. Everything
 lands in `sdk/`, which git ignores. The first call of the CLI puts the CLI
-itself into `~/.android/`, see [What AbGal is not](#what-abgal-is-not). At the
-end `setup` runs `abgal doctor`, which checks KVM, the SDK versions, the system
-images and the memory and says how to fix each line that is not ok.
+itself into `android-home/` in the clone, see
+[What AbGal is not](#what-abgal-is-not). At the end `setup` runs
+`abgal doctor`, which checks KVM, the SDK versions, the system images and the
+memory and says how to fix each line that is not ok.
 
 The system image for a template is fetched on the first `create` that needs
 it, the same way and with `--no-metrics`. On the machine AbGal is developed on,
@@ -149,16 +150,15 @@ guest swaps and an app takes twice as long to start.
 - **Not a test runner.** AbGal gets guests ready. Maestro, Espresso, Appium or
   plain `adb` then do the testing.
 - **Not for physical devices.** It creates and runs emulators only.
-- **Not completely self contained yet.** SDK, guests and logs live in the
-  clone. The SDK tools still keep files in your home folder: the Android CLI
-  in `~/.android/bin/` and `~/.android/cli/`, about 250 MB with its own Java
-  runtime, then small state files in `~/.android/` (adb key, feature flags,
-  modem state per port) and `~/.emulator_console_auth_token`.
-  `~/.android/devices.xml` is a link to the
-  file in the clone, because `avdmanager` reads screen descriptions only from
-  there. If that file already exists, for example from Android Studio, AbGal
-  leaves it alone, and `create` reports the device as not listed unless that
-  file describes the same screens.
+- **Not completely self contained yet.** SDK, guests, logs and the SDK
+  tools' own user files live in the clone, most of it in `android-home/`:
+  the Android CLI, about 250 MB with its own Java runtime, `devices.xml` as
+  a link, and the rest of its state. Two things stay in your home folder,
+  written by two different tools: adb's own files in `~/.android/`
+  (`adbkey`, `adbkey.pub` and one `adb.<port>`), because adb reads no
+  variable for its folder, and `~/.emulator_console_auth_token`, written by
+  the emulator. A new key there would make a phone on USB ask again to
+  allow the computer.
 
 ## Why it exists next to what is already there
 
