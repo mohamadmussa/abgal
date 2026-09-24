@@ -1,8 +1,9 @@
 # Architektur
 
-[README.md](../README.md) bringt ein AVD in vier Befehlen von einem frischen
-Klon zu einem laufenden Emulator. [Wie es funktioniert](how-it-works.md)
-verfolgt ein AVD durch die Datei oder Funktion, die jeden Schritt ausführt.
+[README.md](../README.md) bringt ein Android Virtual Device (AVD) in vier
+Befehlen von einem frischen Klon zu einem laufenden Emulator. [Wie es
+funktioniert](how-it-works.md) verfolgt ein AVD durch die Datei oder
+Funktion, die jeden Schritt ausführt.
 Keines von beiden zeigt die ganze Form auf einmal: welche Teile auf welche
 warten, in welcher Reihenfolge, und wie ein Warten neben einem Schritt
 aussieht, der einfach nur läuft. Diese Seite zeigt genau das, mit denselben
@@ -34,8 +35,8 @@ innerhalb dieser einen Datei geschieht, einen Befehl nach dem anderen.
 
 ## Der Lebenszyklus eines AVD
 
-Jeder Befehl bewegt ein AVD (Android Virtual Device) zwischen derselben
-kleinen Menge von Zuständen, von einer Zeile in `devices.conf` über
+Jeder Befehl bewegt ein AVD zwischen derselben kleinen Menge von Zuständen,
+von einer Zeile in `devices.conf` über
 `create`, `start`, laufend, und wieder zurück zu gestoppt, entweder durch
 `abgal stop` oder durch die Temperaturüberwachung bei 96 C. README.md
 zeichnet das schon als Zustandsdiagramm, siehe
