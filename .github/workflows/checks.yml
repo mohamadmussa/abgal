@@ -51,3 +51,20 @@ jobs:
           printf 'Checking %d files:\n' "${#files[@]}"
           printf '  %s\n' "${files[@]}"
           shellcheck --severity=warning --shell=bash "${files[@]}"
+
+      # Pinned like ShellCheck. It runs after ShellCheck on purpose, because
+      # actionlint then also checks every run: block with it.
+      - name: Install actionlint 1.7.7
+        run: |
+          curl -sSLo al.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          echo "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757  al.tar.gz" \
+            | sha256sum -c -
+          tar -xzf al.tar.gz actionlint
+          sudo mv actionlint /usr/local/bin/
+          actionlint -version
+
+      # A clean pass says the syntax holds. It does not prove that every
+      # github.event field exists, a misspelled one passes.
+      - name: actionlint over the workflows
+        run: actionlint -verbose
