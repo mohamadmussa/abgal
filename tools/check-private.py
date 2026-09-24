@@ -24,7 +24,11 @@ WORDS = os.path.join(ROOT, ".private-words")
 # Directories the --tree walk stays out of. They mirror .gitignore, because
 # before git init there is no index to ask.
 SKIP_DIRS = {".git", "sdk", "avd", "experiments", "runs", "results", "apk",
-             "__pycache__", "node_modules"}
+             "__pycache__", "node_modules", "logs"}
+# Also from .gitignore, but by path rather than by name: tools/local/ is
+# ignored by its path, and .private-words holds the deny list itself, so it
+# always matches its own patterns.
+SKIP_PATHS = {"tools/local", ".private-words"}
 SKIP_SUFFIX = (".de.md", ".log", ".pyc", ".png", ".jpg", ".zip", ".apk")
 # Anything carrying .local. is ignored by git and can never be committed, so
 # scanning it only produces noise. A directory named *.local is skipped whole.
@@ -115,13 +119,15 @@ def tracked():
 def on_disk():
     for base, dirs, files in os.walk(ROOT):
         dirs[:] = [d for d in dirs
-                   if d not in SKIP_DIRS and not d.endswith(".local")]
+                   if d not in SKIP_DIRS and not d.endswith(".local")
+                   and os.path.relpath(os.path.join(base, d), ROOT) not in SKIP_PATHS]
         for name in sorted(files):
-            if name.endswith(SKIP_SUFFIX) or SKIP_MARK in name:
-                continue
             full = os.path.join(base, name)
+            rel = os.path.relpath(full, ROOT)
+            if name.endswith(SKIP_SUFFIX) or SKIP_MARK in name or rel in SKIP_PATHS:
+                continue
             with open(full, "rb") as fh:
-                yield os.path.relpath(full, ROOT), fh.read()
+                yield rel, fh.read()
 
 
 def main():
