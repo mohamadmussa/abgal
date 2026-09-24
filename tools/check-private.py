@@ -24,7 +24,7 @@ WORDS = os.path.join(ROOT, ".private-words")
 # Directories the --tree walk stays out of. They mirror .gitignore, because
 # before git init there is no index to ask.
 SKIP_DIRS = {".git", "sdk", "avd", "experiments", "runs", "results", "apk",
-             "__pycache__", "node_modules", "logs"}
+             "__pycache__", "node_modules", "logs", "android-home"}
 # Also from .gitignore, but by path rather than by name: tools/local/ is
 # ignored by its path, and .private-words holds the deny list itself, so it
 # always matches its own patterns.

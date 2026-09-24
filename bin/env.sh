@@ -48,6 +48,13 @@ export ANDROID_HOME ANDROID_SDK_ROOT
 ANDROID_AVD_HOME="$ABGAL_HOME/avd"
 export ANDROID_AVD_HOME
 
+# User files of the SDK tools, also inside the project folder. avdmanager and
+# the Android CLI read the first name, the emulator only the second. adb
+# reads neither and keeps its key in ~/.android on purpose.
+ANDROID_USER_HOME="$ABGAL_HOME/android-home"
+ANDROID_EMULATOR_HOME="$ABGAL_HOME/android-home"
+export ANDROID_USER_HOME ANDROID_EMULATOR_HOME
+
 case ":$PATH:" in
   *":$ANDROID_HOME/platform-tools:"*) ;;
   *) PATH="$ANDROID_HOME/platform-tools:$PATH" ;;

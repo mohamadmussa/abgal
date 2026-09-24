@@ -3,8 +3,9 @@
 
 One program for the whole life of a guest: create it from a template, start
 it, look at it, stop it again. The SDK, the guests and the logs live under the
-folder this file sits in. The SDK tools still keep some files in ~/.android,
-the Android CLI among them, see docs/troubleshooting.md.
+folder this file sits in. The SDK tools keep their user files there too, in
+android-home/; only adb still keeps its key in ~/.android, see
+docs/troubleshooting.md.
 
   abgal setup                         fetch the SDK into sdk/
   abgal doctor                        check the machine and the SDK
@@ -43,6 +44,7 @@ HOME = Path(__file__).resolve().parent
 SDK = HOME / "sdk"
 AVD = HOME / "avd"
 LOGS = HOME / "logs"
+ANDROID_USER = HOME / "android-home"
 ADB = SDK / "platform-tools" / "adb"
 EMULATOR = SDK / "emulator" / "emulator"
 AVDMANAGER = SDK / "cmdline-tools" / "latest" / "bin" / "avdmanager"
@@ -107,6 +109,10 @@ def sdk_env():
     env["ANDROID_HOME"] = str(SDK)
     env["ANDROID_SDK_ROOT"] = str(SDK)
     env["ANDROID_AVD_HOME"] = str(AVD)
+    # avdmanager and the Android CLI read the first name. The emulator reads
+    # only the second, and adb reads neither, keeping its key in ~/.android.
+    env["ANDROID_USER_HOME"] = str(ANDROID_USER)
+    env["ANDROID_EMULATOR_HOME"] = str(ANDROID_USER)
     env["PATH"] = os.pathsep.join(
         [str(SDK / "platform-tools"), str(SDK / "emulator"), env.get("PATH", "")]
     )
@@ -393,14 +399,14 @@ def link_devices_xml():
     A link keeps one source. A file that is already there, for example from
     Android Studio, is left alone.
     """
-    target = Path.home() / ".android" / "devices.xml"
+    target = ANDROID_USER / "devices.xml"
     if target.exists():
         return
     if target.is_symlink():
         target.unlink()
     target.parent.mkdir(parents=True, exist_ok=True)
     target.symlink_to(HOME / "devices.xml")
-    print("Device description linked: ~/.android/devices.xml -> %s"
+    print("Device description linked: android-home/devices.xml -> %s"
           % (HOME / "devices.xml"))
 
 
@@ -550,7 +556,7 @@ def create_one(row, guest, recreate):
         print("%s already exists, only updating the values" % guest)
     else:
         # Measured on 2026-09-24: when ANDROID_AVD_HOME does not exist yet,
-        # avdmanager writes to ~/.android/avd without a word.
+        # avdmanager writes to android-home/avd without a word.
         AVD.mkdir(parents=True, exist_ok=True)
         command = [AVDMANAGER, "create", "avd", "-n", guest,
                    "-k", row["image"], "-d", row["device"]]
@@ -558,7 +564,7 @@ def create_one(row, guest, recreate):
             problem("avdmanager could not create %s." % guest)
             return False
     if not config.is_file():
-        stray = Path.home() / ".android" / "avd" / (guest + ".avd")
+        stray = ANDROID_USER / "avd" / (guest + ".avd")
         problem("avdmanager reported success, but %s is missing.%s" % (config, (
             "\n       It landed in %s instead, so avdmanager did not"
             "\n       use ANDROID_AVD_HOME=%s." % (stray, AVD)) if stray.is_dir() else ""))
@@ -1421,7 +1427,7 @@ def accept_license(parts):
           "Fetched under it: %s.\n"
           "The Android CLI accepts the same license for every part it installs,\n"
           "now and in a later create. On first use it puts itself, about 250 MB\n"
-          "with its own Java runtime, into ~/.android.\n" % (LICENSE_URL, ", ".join(parts)))
+          "with its own Java runtime, into android-home/.\n" % (LICENSE_URL, ", ".join(parts)))
     if not sys.stdin.isatty():
         fail("nothing fetched, there is nobody to ask.\n"
              "       Read the license, then run: ./abgal setup --accept-licenses")

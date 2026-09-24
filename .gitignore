@@ -4,6 +4,10 @@ sdk/
 # Virtual device images and their runtime state, several gigabytes.
 avd/
 
+# User files of the SDK tools, redirected here from ~/.android. Includes a
+# copy of the private adb key, so this never reaches a commit.
+android-home/
+
 # Raw experiment output and run artifacts, local evidence only.
 experiments/
 runs/
