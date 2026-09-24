@@ -115,6 +115,7 @@ Run from the clone as `./abgal`, or put the clone on your `PATH`.
 | `abgal start -n <guest> --locale ar-SA --timezone Asia/Riyadh` | Sets language and time zone. Without them a guest gets `en-US` and `Europe/Berlin`, not the values of the machine |
 | `abgal start -n <guest> --gpu host` | Renders on the graphics card instead of in software |
 | `abgal start -n <guest> --wipe` | Boots as if new, user data is wiped |
+| `abgal start -n <guest> --dry-run` | Shows the command line and the checks, starts nothing |
 | `abgal status` | What is on disk, what is running, and how much memory is left |
 | `abgal stop -n <guest>` | Stops a guest, orderly first, by signal after `--grace` seconds |
 | `abgal delete -n <guest>` | Deletes a guest and its disk, after asking |

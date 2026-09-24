@@ -146,6 +146,11 @@ The emulator is always started with these flags:
 
 `--wipe` adds `-wipe-data`, `--port` adds `-port`.
 
+`--dry-run` prints this command line and what each check would say: whether
+the guest runs already, whether the memory fits, whether its `hw.ramSize`
+differs from its template, and whether the temperature watch can measure. It
+starts nothing and does not create the logs folder.
+
 If the session does not have the `kvm` group yet, the whole command runs
 through `sg kvm -c`, and `start` says so.
 
