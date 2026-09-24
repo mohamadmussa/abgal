@@ -90,6 +90,7 @@ not always say why. Run `setup` again, and if it fails a second time, run the
 line by hand to see the CLI's own output:
 
 ```bash
+source bin/env.sh
 sdk/cmdline-tools/latest/bin/android --no-metrics --sdk="$PWD/sdk" sdk install emulator
 ```
 
@@ -99,13 +100,12 @@ sdk/cmdline-tools/latest/bin/android --no-metrics --sdk="$PWD/sdk" sdk install e
 ERROR: device phone-1080x2400-480 is not listed in devices.xml.
 ```
 
-`avdmanager` reads screen descriptions only from `~/.android/devices.xml`.
+`avdmanager` reads screen descriptions only from `android-home/devices.xml`.
 `create` links that path to the file in the clone, but only when nothing is
-there yet. Android Studio writes its own file to the same place. See what is
-there:
+there yet. See what is there:
 
 ```bash
-ls -l ~/.android/devices.xml
+ls -l android-home/devices.xml
 ```
 
 If it is a file and not a link into the clone, either copy the `<d:device>`
@@ -122,6 +122,18 @@ ERROR: dev needs about 2436 MB, 2100 MB are free, and 1024 MB stay reserved for
 The check counts the guest's `hw.ramSize`, 900 MB on top and 1024 MB for the
 machine. Stop a guest, give the template less `ram`, or start with `--force`
 and watch `abgal status`. Below 1536 MB a guest swaps.
+
+```text
+Note: dev has 4096 MB in its config.ini, its template
+      phone-1080x2400-480-api35-x86_64 says 1536 MB.
+      It starts with 4096 MB. To bring it in line, keeping its disk:
+      abgal create phone-1080x2400-480-api35-x86_64 --as dev
+```
+
+This is not an error, and the guest starts anyway with the value it already
+has. It means the guest was created before `ram` changed in `devices.conf`
+and still carries the old number. Run the named `abgal create` command to
+rewrite `hw.ramSize` from the template without losing the disk.
 
 ## The guest did not come up
 
@@ -201,22 +213,22 @@ own; its last start is in `logs/<guest>/emulator.log`.
 
 ## Files in your home folder
 
-AbGal keeps the SDK, the guests and the logs in the clone. The SDK tools
-write a few things to your home folder anyway. These are the ones seen on the
-machine AbGal is developed on:
+AbGal keeps the SDK, the guests, the logs and its own user files in the
+clone, under `sdk/`, `avd/`, `logs/` and `android-home/`. Only adb still
+writes to your home folder, because it reads no variable for its own
+folder, plus one file for the emulator console:
 
 | Path | Written by | What it is |
 |---|---|---|
-| `~/.android/bin/`, `~/.android/cli/` | the Android CLI | the CLI itself with its own Java runtime, about 250 MB |
-| `~/.android/adbkey`, `~/.android/adbkey.pub` | adb | the key adb uses to talk to devices |
-| `~/.android/adb.5037` | adb | which adb program runs the server on port 5037 |
-| `~/.android/devices.xml` | `abgal create` | a link to the clone's screen descriptions |
-| `~/.android/modem-nv-ram-<port>` | the emulator | modem state, one file per port |
-| `~/.android/emu-*`, `~/.android/cache/` | the emulator and the SDK tools | feature flags, update checks, repository lists |
-| `~/.android/userid`, `~/.android/analytics.settings` | the SDK tools | an id and the usage data setting |
+| `~/.android/adbkey` | adb | the private key adb uses to talk to devices |
+| `~/.android/adbkey.pub` | adb | the matching public key |
+| `~/.android/adb.<port>` | adb | which adb program runs the server on that port |
 | `~/.emulator_console_auth_token` | the emulator | the token for the emulator console |
 
-The tools write them again when they are missing. Leave the adb key alone
-if you also use a phone over USB: a new key means the phone has to allow this
-computer again. Keeping all of it in the clone is planned in
-[#32](https://github.com/mohamadmussa/abgal/issues/32).
+Everything else the SDK tools write lands in `android-home/` in the clone.
+
+If AbGal ran on this machine before `android-home/` existed, `~/.android/`
+can still hold old files: `bin/`, `cli/`, `devices.xml`, `emu-*`,
+`modem-nv-ram-*`, `userid` and `cache/`. AbGal no longer uses them, and they
+can be removed if no other Android tool, such as Android Studio, uses
+`~/.android`. Never remove the adb key.

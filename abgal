@@ -3,8 +3,9 @@
 
 One program for the whole life of a guest: create it from a template, start
 it, look at it, stop it again. The SDK, the guests and the logs live under the
-folder this file sits in. The SDK tools still keep some files in ~/.android,
-the Android CLI among them, see docs/troubleshooting.md.
+folder this file sits in. The SDK tools keep their user files there too, in
+android-home/; only adb still keeps its key in ~/.android, see
+docs/troubleshooting.md.
 
   abgal setup                         fetch the SDK into sdk/
   abgal doctor                        check the machine and the SDK
@@ -43,6 +44,7 @@ HOME = Path(__file__).resolve().parent
 SDK = HOME / "sdk"
 AVD = HOME / "avd"
 LOGS = HOME / "logs"
+ANDROID_USER = HOME / "android-home"
 ADB = SDK / "platform-tools" / "adb"
 EMULATOR = SDK / "emulator" / "emulator"
 AVDMANAGER = SDK / "cmdline-tools" / "latest" / "bin" / "avdmanager"
@@ -107,6 +109,10 @@ def sdk_env():
     env["ANDROID_HOME"] = str(SDK)
     env["ANDROID_SDK_ROOT"] = str(SDK)
     env["ANDROID_AVD_HOME"] = str(AVD)
+    # avdmanager and the Android CLI read the first name. The emulator reads
+    # only the second, and adb reads neither, keeping its key in ~/.android.
+    env["ANDROID_USER_HOME"] = str(ANDROID_USER)
+    env["ANDROID_EMULATOR_HOME"] = str(ANDROID_USER)
     env["PATH"] = os.pathsep.join(
         [str(SDK / "platform-tools"), str(SDK / "emulator"), env.get("PATH", "")]
     )
@@ -393,14 +399,14 @@ def link_devices_xml():
     A link keeps one source. A file that is already there, for example from
     Android Studio, is left alone.
     """
-    target = Path.home() / ".android" / "devices.xml"
+    target = ANDROID_USER / "devices.xml"
     if target.exists():
         return
     if target.is_symlink():
         target.unlink()
     target.parent.mkdir(parents=True, exist_ok=True)
     target.symlink_to(HOME / "devices.xml")
-    print("Device description linked: ~/.android/devices.xml -> %s"
+    print("Device description linked: android-home/devices.xml -> %s"
           % (HOME / "devices.xml"))
 
 
@@ -550,7 +556,7 @@ def create_one(row, guest, recreate):
         print("%s already exists, only updating the values" % guest)
     else:
         # Measured on 2026-09-24: when ANDROID_AVD_HOME does not exist yet,
-        # avdmanager writes to ~/.android/avd without a word.
+        # avdmanager writes to android-home/avd without a word.
         AVD.mkdir(parents=True, exist_ok=True)
         command = [AVDMANAGER, "create", "avd", "-n", guest,
                    "-k", row["image"], "-d", row["device"]]
@@ -558,7 +564,7 @@ def create_one(row, guest, recreate):
             problem("avdmanager could not create %s." % guest)
             return False
     if not config.is_file():
-        stray = Path.home() / ".android" / "avd" / (guest + ".avd")
+        stray = ANDROID_USER / "avd" / (guest + ".avd")
         problem("avdmanager reported success, but %s is missing.%s" % (config, (
             "\n       It landed in %s instead, so avdmanager did not"
             "\n       use ANDROID_AVD_HOME=%s." % (stray, AVD)) if stray.is_dir() else ""))
@@ -612,6 +618,9 @@ def cmd_list(args):
 
 
 def cmd_create(args):
+    if args.yes and not args.recreate:
+        fail("--yes only applies to --recreate.")
+
     # Without a template this shows what there is to choose from. The names
     # are long on purpose, so being asked to type one from memory is the
     # wrong way round: the program knows them and says them.
@@ -646,6 +655,30 @@ def cmd_create(args):
         # grows by itself if somebody asks for more.
         width = max(2, len(str(args.count)))
         names = ["%s-%0*d" % (base, width, n) for n in range(1, args.count + 1)]
+
+    if args.recreate:
+        # One question covers the whole batch, so a --count run does not
+        # ask sixteen times over.
+        existing = [n for n in names if guest_folder(n).is_dir()]
+        # Recreating a running guest loses whatever it holds, so this is a
+        # refusal and not something --yes or a prompt can wave through.
+        running = [n for n in existing if running_pid(n)]
+        if running:
+            fail("still running: %s. Stop first, for example: abgal stop -n %s"
+                 % (", ".join(running), running[0]))
+        if existing and not args.yes:
+            if not sys.stdin.isatty():
+                fail("nothing to ask on. Pass --yes to delete %s unattended."
+                     % ", ".join(existing))
+            try:
+                answer = input("Delete %s and its disk? This cannot be undone. [y/N] "
+                                % ", ".join(existing))
+            except EOFError:
+                print()
+                answer = ""
+            if answer.strip().lower() not in ("y", "yes"):
+                print("Nothing was deleted.")
+                return 1
 
     row = next(r for r in template_rows() if r["name"] == args.template)
     link_devices_xml()
@@ -738,22 +771,73 @@ def wait_for_boot(serial, seconds):
 
 
 def start_one(args, name):
+    # Printed first, so a batch reads as one block per guest instead of all
+    # the checks running together before any name is said. A real start only
+    # says so once the checks below have passed, so a refusal never follows
+    # a line that already claimed the guest was starting.
+    if args.dry_run:
+        print("Would start %s" % name)
+
+    would_refuse = False
     pid = running_pid(name)
     if pid:
-        return problem("%s is already running as pid %d." % (name, pid))
+        # A dry run reports what a real start would refuse on and keeps going,
+        # instead of stopping at the first one.
+        if args.dry_run:
+            field("Check", "already running as pid %d, start would refuse" % pid)
+            would_refuse = True
+        else:
+            return problem("%s is already running as pid %d." % (name, pid))
 
     # Read for this guest and at this moment. In a batch the guest before it
     # is already up and still growing, so every start gets the number that is
     # true for it and not the one the first guest saw.
     config = read_ini(guest_folder(name) / "config.ini")
+    mark = guest_folder(name) / "abgal-template"
+    template_name = mark.read_text().strip() if mark.is_file() else None
     wanted = memory_mb(config.get("hw.ramSize")) + OVERHEAD_MB
     free = available_mb()
-    if free is not None and free < wanted + RESERVE_MB and not args.force:
-        return problem(
-            "%s needs about %d MB, %d MB are free, and %d MB stay reserved for\n"
-            "       the machine. Stop a guest first, or insist with --force."
-            % (name, wanted, free, RESERVE_MB)
-        )
+    if args.dry_run and free is not None:
+        # A dry run starts nothing, so the reading never drops as the batch
+        # goes on. This charges it for the guests before it that would.
+        free -= args.dry_run_committed
+    if free is None:
+        # No MemAvailable means no number to compare against, not that
+        # memory is fine. --force already skips the check, so it skips the note too.
+        if args.dry_run:
+            field("Check", "MemAvailable unreadable, check skipped")
+        elif not args.force:
+            print("Note: MemAvailable is not in /proc/meminfo, so the memory check was skipped.")
+    elif free < wanted + RESERVE_MB:
+        if args.dry_run:
+            field("Check", "needs about %d MB, %d MB free, %d MB reserved: "
+                            "start would refuse without --force" % (wanted, free, RESERVE_MB))
+            would_refuse = True
+        elif not args.force:
+            return problem(
+                "%s needs about %d MB, %d MB are free, and %d MB stay reserved for\n"
+                "       the machine. Stop a guest first, or insist with --force."
+                % (name, wanted, free, RESERVE_MB)
+            )
+    elif args.dry_run:
+        field("Check", "needs about %d MB, %d MB free, %d MB reserved: fits"
+                        % (wanted, free, RESERVE_MB))
+
+    if args.dry_run and not would_refuse:
+        # This guest would really start, so the next one's check has to see
+        # less free memory, the same way a real batch would.
+        args.dry_run_committed += wanted
+
+    # Guests created before the memory change still carry the old hw.ramSize,
+    # and -lowram makes that stored value win over what the template says now.
+    if template_name and config.get("hw.ramSize") is not None:
+        row = next((r for r in template_rows() if r["name"] == template_name), None)
+        if row and memory_mb(config.get("hw.ramSize")) != int(row["ram"]):
+            stored = memory_mb(config.get("hw.ramSize"))
+            print("Note: %s has %d MB in its config.ini, its template\n"
+                  "      %s says %s MB." % (name, stored, template_name, row["ram"]))
+            print("      It starts with %d MB. To bring it in line, keeping its disk:" % stored)
+            print("      abgal create %s --as %s" % (template_name, name))
 
     command = [str(EMULATOR), "-avd", name]
     if args.port is not None:
@@ -788,12 +872,9 @@ def start_one(args, name):
         command = ["sg", "kvm", "-c", " ".join(shlex.quote(c) for c in command)]
 
     folder = LOGS / name
-    folder.mkdir(parents=True, exist_ok=True)
     logfile = folder / "emulator.log"
 
-    mark = guest_folder(name) / "abgal-template"
-    print("Starting %s" % name)
-    field("Template", mark.read_text().strip() if mark.is_file() else "unknown")
+    field("Template", template_name or "unknown")
     field("Screen", "%sx%s at %s dpi" % (config.get("hw.lcd.width", "?"),
                                          config.get("hw.lcd.height", "?"),
                                          config.get("hw.lcd.density", "?")))
@@ -803,6 +884,17 @@ def start_one(args, name):
     field("Port", args.port if args.port is not None else "chosen by the emulator")
     field("Log", logfile)
     print()
+
+    if args.dry_run:
+        # Nothing on disk changes for a dry run, so the folder is never made
+        # and the command is only shown, not handed to Popen.
+        print("Command:")
+        print("  " + " ".join(shlex.quote(c) for c in command))
+        return 1 if would_refuse else 0
+
+    print("Starting %s" % name)
+
+    folder.mkdir(parents=True, exist_ok=True)
 
     # The previous run is kept as .1, the same two generations the watch keeps.
     # The failure message below quotes the last lines of this file, so it has
@@ -888,12 +980,26 @@ def cmd_start(args):
     # Before any guest runs, so a bad value stops the start and not the watch.
     # A watch that cannot measure may take sensors' full ten seconds to die,
     # long after start said it runs, so the reading is taken here as well.
+    watch_refuses = False
     if not args.no_watch:
         watch_settings()
-        if temperature(thermal_zone()) is None:
-            fail("no processor temperature measurable, so no guest could be watched.\n"
-                 "       Neither the x86_pkg_temp zone nor sensors gave a value.\n"
-                 "       Start with --no-watch to run without the watch.")
+        temp = temperature(thermal_zone())
+        if temp is None:
+            # A dry run reports the refusal instead of making it, the same
+            # way start_one does for its own checks.
+            if args.dry_run:
+                field("Watch", "no temperature measurable, start would refuse")
+                watch_refuses = True
+            else:
+                fail("no processor temperature measurable, so no guest could be watched.\n"
+                     "       Neither the x86_pkg_temp zone nor sensors gave a value.\n"
+                     "       Start with --no-watch to run without the watch.")
+        elif args.dry_run:
+            field("Watch", "%s C, the watch could run" % temp)
+
+    # A dry run starts nothing, so this is the running total of what the
+    # guests already checked in this batch would have used, for start_one.
+    args.dry_run_committed = 0
 
     # One after another, never at the same time. Each guest is given the whole
     # sequence of its own start, including its own memory check, and the one
@@ -914,13 +1020,15 @@ def cmd_start(args):
             failed.append(name)
 
     if failed:
-        problem("%d of %d guests did not start: %s"
-                % (len(failed), len(names), ", ".join(failed)))
+        problem("%d of %d guests %s: %s"
+                % (len(failed), len(names),
+                   "would not start" if args.dry_run else "did not start",
+                   ", ".join(failed)))
     if unwatched and len(names) > 1:
         problem("%s runs without a temperature watch.%s"
                 % (unwatched, " Not started after it: %s" % ", ".join(skipped)
                    if skipped else ""))
-    return 1 if failed or unwatched else 0
+    return 1 if failed or unwatched or watch_refuses else 0
 
 
 def stop_one(name, serial, grace, say=print):
@@ -1360,7 +1468,7 @@ def accept_license(parts):
           "Fetched under it: %s.\n"
           "The Android CLI accepts the same license for every part it installs,\n"
           "now and in a later create. On first use it puts itself, about 250 MB\n"
-          "with its own Java runtime, into ~/.android.\n" % (LICENSE_URL, ", ".join(parts)))
+          "with its own Java runtime, into android-home/.\n" % (LICENSE_URL, ", ".join(parts)))
     if not sys.stdin.isatty():
         fail("nothing fetched, there is nobody to ask.\n"
              "       Read the license, then run: ./abgal setup --accept-licenses")
@@ -1520,6 +1628,8 @@ def build_parser():
                         help="create N guests, numbered from 01")
     create.add_argument("--recreate", action="store_true",
                         help="delete an existing guest of that name first")
+    create.add_argument("--yes", action="store_true",
+                        help="with --recreate, do not ask first")
     create.set_defaults(run=cmd_create, parser=create)
 
     delete = subs.add_parser("delete", help="delete one guest and its disk")
@@ -1552,6 +1662,8 @@ def build_parser():
     start.add_argument("--no-wait", action="store_true",
                        help="return as soon as the console answers")
     start.add_argument("--timeout", type=int, default=300, metavar="SECONDS")
+    start.add_argument("--dry-run", action="store_true",
+                       help="show the command line and the checks, start nothing")
     start.set_defaults(run=cmd_start, parser=start)
 
     stop = subs.add_parser("stop", help="stop guests, one after another")
