@@ -48,15 +48,17 @@ target, checked against its sha1, unpacked with the permission bits kept, and
 only then renamed into place, so an interrupted setup leaves no half part.
 The platform tools and the emulator come from the Android CLI, and only their
 folders count as proof, for the same reason as in [Create](#create). A part
-older than its minimum is named and left alone.
+older than its minimum is named and left alone. `setup` ends by running
+`doctor`, but its exit code only says whether fetching worked, so a CI runner
+without `/dev/kvm` can still fetch the SDK.
 
-`abgal doctor` prints one line per check, with one of four states:
+`abgal doctor` prints one line per check, with one of six states:
 
 | State | Meaning |
 |---|---|
 | `ok` | nothing to do |
 | `later` | a system image that the first `create` fetches by itself |
-| `missing`, `too old`, `too low`, `no` | a problem, with the command that fixes it on the next line |
+| `missing`, `too old`, `too low`, `no` | a problem, with a fix on the next line where there is one |
 
 It ends with exit code 1 when a line is a problem, and never runs `sudo`
 itself.
