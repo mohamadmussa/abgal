@@ -24,7 +24,11 @@ WORDS = os.path.join(ROOT, ".private-words")
 # Directories the --tree walk stays out of. They mirror .gitignore, because
 # before git init there is no index to ask.
 SKIP_DIRS = {".git", "sdk", "avd", "experiments", "runs", "results", "apk",
-             "__pycache__", "node_modules"}
+             "__pycache__", "node_modules", "logs", "android-home"}
+# Also from .gitignore, but by path rather than by name: tools/local/ is
+# ignored by its path, and .private-words holds the deny list itself, so it
+# always matches its own patterns.
+SKIP_PATHS = {"tools/local", ".private-words"}
 SKIP_SUFFIX = (".de.md", ".log", ".pyc", ".png", ".jpg", ".zip", ".apk")
 # Anything carrying .local. is ignored by git and can never be committed, so
 # scanning it only produces noise. A directory named *.local is skipped whole.
@@ -57,7 +61,16 @@ PATTERNS = [
 
 
 def run(args):
-    return subprocess.run(args, cwd=ROOT, capture_output=True)
+    try:
+        return subprocess.run(args, cwd=ROOT, capture_output=True)
+    except OSError as err:
+        fail("could not run '%s': %s" % (" ".join(args), err))
+
+
+def fail(message):
+    """Stop because the scan could not run. That is exit code 2, not a finding."""
+    print(message, file=sys.stderr)
+    sys.exit(2)
 
 
 def load_extra():
@@ -65,18 +78,21 @@ def load_extra():
     out = []
     if not os.path.exists(WORDS):
         return out
-    with open(WORDS, encoding="utf-8") as fh:
-        for n, line in enumerate(fh, 1):
-            line = line.split("#", 1)[0].strip()
-            if not line:
-                continue
-            if "=" not in line:
-                sys.exit("%s line %d: expected 'label = regex'" % (WORDS, n))
-            label, expr = (s.strip() for s in line.split("=", 1))
-            try:
-                out.append((label, re.compile(expr.encode(), re.IGNORECASE)))
-            except re.error as err:
-                sys.exit("%s line %d: %s" % (WORDS, n, err))
+    try:
+        with open(WORDS, encoding="utf-8") as fh:
+            for n, line in enumerate(fh, 1):
+                line = line.split("#", 1)[0].strip()
+                if not line:
+                    continue
+                if "=" not in line:
+                    fail("%s line %d: expected 'label = regex'" % (WORDS, n))
+                label, expr = (s.strip() for s in line.split("=", 1))
+                try:
+                    out.append((label, re.compile(expr.encode(), re.IGNORECASE)))
+                except re.error as err:
+                    fail("%s line %d: %s" % (WORDS, n, err))
+    except OSError as err:
+        fail("%s: %s" % (WORDS, err))
     return out
 
 
@@ -89,16 +105,23 @@ def staged():
     if run(["git", "rev-parse", "--verify", "HEAD"]).returncode == 0:
         names = run(["git", "diff", "--cached", "--name-only",
                      "--diff-filter=ACMR"])
+        if names.returncode != 0:
+            fail("git diff failed: " + names.stderr.decode().strip())
     else:
         names = run(["git", "ls-files", "--cached"])
+        if names.returncode != 0:
+            fail("git ls-files failed: " + names.stderr.decode().strip())
     for path in names.stdout.decode().splitlines():
         blob = run(["git", "show", ":" + path])
-        if blob.returncode == 0:
-            yield path, blob.stdout
+        if blob.returncode != 0:
+            fail("git show failed: " + blob.stderr.decode().strip())
+        yield path, blob.stdout
 
 
 def tracked():
     names = run(["git", "ls-files", "--cached"])
+    if names.returncode != 0:
+        fail("git ls-files failed: " + names.stderr.decode().strip())
     for path in names.stdout.decode().splitlines():
         full = os.path.join(ROOT, path)
         if os.path.isfile(full):
@@ -109,21 +132,27 @@ def tracked():
 def on_disk():
     for base, dirs, files in os.walk(ROOT):
         dirs[:] = [d for d in dirs
-                   if d not in SKIP_DIRS and not d.endswith(".local")]
+                   if d not in SKIP_DIRS and not d.endswith(".local")
+                   and os.path.relpath(os.path.join(base, d), ROOT) not in SKIP_PATHS]
         for name in sorted(files):
-            if name.endswith(SKIP_SUFFIX) or SKIP_MARK in name:
-                continue
             full = os.path.join(base, name)
+            rel = os.path.relpath(full, ROOT)
+            if name.endswith(SKIP_SUFFIX) or SKIP_MARK in name or rel in SKIP_PATHS:
+                continue
+            # A dangling symlink is not an error, there is simply nothing there
+            # to scan.
+            if not os.path.isfile(full):
+                continue
             with open(full, "rb") as fh:
-                yield os.path.relpath(full, ROOT), fh.read()
+                yield rel, fh.read()
 
 
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "--staged"
     if mode not in ("--staged", "--all", "--tree"):
-        sys.exit(__doc__)
+        fail(__doc__)
     if mode in ("--staged", "--all") and not in_repo():
-        sys.exit("not a git repository, use --tree")
+        fail("not a git repository, use --tree")
 
     checks = [(label, re.compile(expr)) for label, expr in PATTERNS]
     checks += load_extra()
@@ -132,19 +161,24 @@ def main():
     me = os.path.relpath(os.path.abspath(__file__), ROOT)
     findings = {}
     scanned = skipped = 0
-    for path, data in source():
-        if path == me:
-            # The scanner describes the patterns it hunts, so it would always
-            # report itself. Everything else is scanned without exception.
-            continue
-        if b"\0" in data[:8192]:
-            skipped += 1
-            continue
-        scanned += 1
-        for label, rx in checks:
-            n = len(rx.findall(data))
-            if n:
-                findings.setdefault(label, {})[path] = n
+    # A file that vanishes or turns unreadable mid walk is not a finding, it
+    # is a reason the scan itself could not finish.
+    try:
+        for path, data in source():
+            if path == me:
+                # The scanner describes the patterns it hunts, so it would always
+                # report itself. Everything else is scanned without exception.
+                continue
+            if b"\0" in data[:8192]:
+                skipped += 1
+                continue
+            scanned += 1
+            for label, rx in checks:
+                n = len(rx.findall(data))
+                if n:
+                    findings.setdefault(label, {})[path] = n
+    except OSError as err:
+        fail(str(err))
 
     print("AbGal commit gate, mode %s" % mode[2:])
     print("Scanned %d text files, skipped %d binary." % (scanned, skipped))
