@@ -34,6 +34,16 @@ SKIP_SUFFIX = (".de.md", ".log", ".pyc", ".png", ".jpg", ".zip", ".apk")
 # scanning it only produces noise. A directory named *.local is skipped whole.
 SKIP_MARK = ".local."
 
+# Label of the umlaut pattern below, named so the .de.md exemption in main()
+# can skip it by identity instead of by a duplicated string literal.
+UMLAUT_LABEL = "non English letter"
+
+# Committed German mirrors, exempt from UMLAUT_LABEL by exact path, not by
+# suffix. Every other .de.md file stays local per .gitignore and is never
+# staged, so widening this to every *.de.md path would only ever weaken the
+# check for a file that should not exist in a commit in the first place.
+UMLAUT_EXEMPT_PATHS = {"docs/architecture.de.md"}
+
 # Structural patterns. These describe a shape, not a value, so the list is
 # safe to publish. Anything that is a literal belongs in .private-words.
 PATTERNS = [
@@ -55,7 +65,7 @@ PATTERNS = [
      rb"\b[a-z0-9][a-z0-9-]*\.(?:fritz\.box|lan|home\.arpa|internal)\b"),
     ("long digit run",
      rb"\b[0-9]{9,}\b"),
-    ("non English letter",
+    (UMLAUT_LABEL,
      "[äöüßÄÖÜàáâçéèêëíìîïñóòôõúùûý]".encode()),
 ]
 
@@ -174,6 +184,11 @@ def main():
                 continue
             scanned += 1
             for label, rx in checks:
+                # German prose in a committed mirror legitimately carries
+                # umlauts. Every other pattern still runs, a mirror can leak
+                # an address or a phone number exactly like any other file.
+                if label == UMLAUT_LABEL and path in UMLAUT_EXEMPT_PATHS:
+                    continue
                 n = len(rx.findall(data))
                 if n:
                     findings.setdefault(label, {})[path] = n
