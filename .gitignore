@@ -42,6 +42,10 @@ logs/
 # under the project so that they are findable months later.
 tools/local/
 
+# Claude Code configuration: project instructions and hooks. Local only,
+# never tracked.
+.claude/
+
 # Python bytecode.
 __pycache__/
 *.pyc
