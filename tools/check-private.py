@@ -34,6 +34,10 @@ SKIP_SUFFIX = (".de.md", ".log", ".pyc", ".png", ".jpg", ".zip", ".apk")
 # scanning it only produces noise. A directory named *.local is skipped whole.
 SKIP_MARK = ".local."
 
+# Label of the umlaut pattern below, named so the .de.md exemption in main()
+# can skip it by identity instead of by a duplicated string literal.
+UMLAUT_LABEL = "non English letter"
+
 # Structural patterns. These describe a shape, not a value, so the list is
 # safe to publish. Anything that is a literal belongs in .private-words.
 PATTERNS = [
@@ -55,7 +59,7 @@ PATTERNS = [
      rb"\b[a-z0-9][a-z0-9-]*\.(?:fritz\.box|lan|home\.arpa|internal)\b"),
     ("long digit run",
      rb"\b[0-9]{9,}\b"),
-    ("non English letter",
+    (UMLAUT_LABEL,
      "[äöüßÄÖÜàáâçéèêëíìîïñóòôõúùûý]".encode()),
 ]
 
@@ -174,6 +178,11 @@ def main():
                 continue
             scanned += 1
             for label, rx in checks:
+                # German prose in a .de.md file legitimately carries umlauts.
+                # Every other pattern still runs, a .de.md file can leak an
+                # address or a phone number exactly like any other file.
+                if label == UMLAUT_LABEL and path.endswith(".de.md"):
+                    continue
                 n = len(rx.findall(data))
                 if n:
                     findings.setdefault(label, {})[path] = n
