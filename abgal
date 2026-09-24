@@ -2,9 +2,9 @@
 """AbGal. Android Batch Guests, Accelerated and Local.
 
 One program for the whole life of a guest: create it from a template, start
-it, look at it, stop it again. Everything lives under the folder this file
-sits in, so a clone is a complete installation and nothing is written to the
-machine outside it.
+it, look at it, stop it again. The SDK, the guests and the logs live under the
+folder this file sits in. The SDK tools still keep some files in ~/.android,
+the Android CLI among them, see docs/troubleshooting.md.
 
   abgal setup                         fetch the SDK into sdk/
   abgal doctor                        check the machine and the SDK
@@ -1359,7 +1359,8 @@ def accept_license(parts):
           "Agreement: %s\n\n"
           "Fetched under it: %s.\n"
           "The Android CLI accepts the same license for every part it installs,\n"
-          "now and in a later create.\n" % (LICENSE_URL, ", ".join(parts)))
+          "now and in a later create. On first use it puts itself, about 250 MB\n"
+          "with its own Java runtime, into ~/.android.\n" % (LICENSE_URL, ", ".join(parts)))
     if not sys.stdin.isatty():
         fail("nothing fetched, there is nobody to ask.\n"
              "       Read the license, then run: ./abgal setup --accept-licenses")
