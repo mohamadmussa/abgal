@@ -69,7 +69,7 @@ werden könnte.
 `abgal start` ist der eine Ablauf in AbGal, der es am meisten wert ist, aus
 mehr als einem Blickwinkel gesehen zu werden, weil es die eine Stelle ist,
 an der mehrere Dinge aufeinander warten: der Emulatorprozess selbst, adb,
-das seine Konsole abfragt, ein Unterprozess für die Temperaturüberwachung,
+das seine console abfragt, ein Unterprozess für die Temperaturüberwachung,
 und eine zweite Abfrage, bis der Boot fertig ist. Drei Diagramme zeigen
 denselben realen Ablauf auf drei verschiedene Arten.
 
@@ -77,7 +77,7 @@ Der Schaltplan zeigt die reale Verdrahtung: `abgal` und die vier Dinge, mit
 denen es spricht, der Kernel, der Emulator, adb und die
 Temperaturüberwachung, eine Leitung pro Paar. Ein kleiner Impuls leuchtet
 auf jeder Leitung genau in dem Moment auf, in dem dieser Kanal benutzt wird,
-sodass ein Kanal, der zweimal benutzt wird, adb für die Konsole und erneut
+sodass ein Kanal, der zweimal benutzt wird, adb für die console und erneut
 für den Boot, eine Leitung ist, die sichtbar zweimal pulsiert, nicht zwei
 getrennte Leitungen.
 
@@ -97,7 +97,7 @@ Leitung.
 </picture>
 
 Der Zustandsautomat zeigt, wo der Ablauf enden kann: bereit, oder einer von
-drei unterschiedlichen Fehlerabschlüssen, die Konsole hat nie geantwortet,
+drei unterschiedlichen Fehlerabschlüssen, die console hat nie geantwortet,
 die Temperaturüberwachung ist sofort gestorben, oder das AVD ist nie fertig
 gebootet, jeder davon mit der echten Meldung, die `start` für diesen Fall
 ausgibt.
