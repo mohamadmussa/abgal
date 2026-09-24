@@ -43,8 +43,9 @@ ANDROID_HOME="$ABGAL_HOME/sdk"
 ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_HOME ANDROID_SDK_ROOT
 
-# The virtual devices also live inside the project folder instead of under
-# ~/.android/avd.
+# The virtual devices also live inside the project folder, in their own
+# avd/ and not mixed into android-home/ below, since the disk images run
+# to gigabytes and the SDK tools' own files do not.
 ANDROID_AVD_HOME="$ABGAL_HOME/avd"
 export ANDROID_AVD_HOME
 

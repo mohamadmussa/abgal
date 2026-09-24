@@ -90,6 +90,7 @@ not always say why. Run `setup` again, and if it fails a second time, run the
 line by hand to see the CLI's own output:
 
 ```bash
+source bin/env.sh
 sdk/cmdline-tools/latest/bin/android --no-metrics --sdk="$PWD/sdk" sdk install emulator
 ```
 

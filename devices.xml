@@ -21,8 +21,8 @@
   cmdline-tools/latest/lib/sdklib/sdklib.core.jar, com/android/sdklib/devices/nexus.xml.
   The often cited version 7 is outdated, the tool here writes 8.
 
-  It is installed by placing it at ~/.android/devices.xml, where the SDK
-  tools read it. abgal create links it there on first use.
+  It is installed by placing it at android-home/devices.xml in the clone,
+  where the SDK tools read it. abgal create links it there on first use.
 -->
 
 <d:devices

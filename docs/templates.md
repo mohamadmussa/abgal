@@ -61,6 +61,7 @@ the screen is already there, skip to step 3.
 List the images for one API level:
 
 ```bash
+source bin/env.sh
 sdk/cmdline-tools/latest/bin/android --no-metrics sdk list --all 'system-images/android-34/*'
 ```
 
@@ -90,6 +91,7 @@ line with the templates that use this screen. Check that the SDK sees the new
 screen:
 
 ```bash
+source bin/env.sh
 sdk/cmdline-tools/latest/bin/avdmanager list device -c
 ```
 
