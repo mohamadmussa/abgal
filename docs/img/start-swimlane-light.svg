@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040.00 1378.00" width="1040.00" height="1378.00" role="img" aria-label="Swimlane view of abgal start">
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #5b5b63;
+  --box-fill: #f4f4f6;
+  --box-stroke: #33333d;
+  --decision-fill: #eef1fb;
+  --track: #dcdce2;
+  --accent: #2f5fd6;
+  --ok-fill: #e8f7ee;
+  --ok-stroke: #1a7f37;
+  --bad-fill: #fbeaea;
+  --bad-stroke: #b42318;
+  --arrow: #33333d;
+}
+svg { background: var(--bg); }
+text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
+.label-actor { font-size: 9px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.label-main { font-size: 11.5px; }
+.label-duration { font-size: 10px; font-style: italic; fill: var(--muted); }
+.label-edge { font-size: 10px; fill: var(--muted); }
+.label-note { font-size: 10px; font-style: italic; fill: var(--muted); }
+.box, .box-instant, .box-action { fill: var(--box-fill); stroke: var(--box-stroke); stroke-width: 1.5; }
+.box-decision { fill: var(--decision-fill); stroke: var(--box-stroke); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.box-ok { fill: var(--ok-fill); stroke: var(--ok-stroke); stroke-width: 2; }
+.box-bad { fill: var(--bad-fill); stroke: var(--bad-stroke); stroke-width: 2; }
+.bar-track { fill: var(--track); }
+.bar-fill { fill: var(--accent); }
+.edge { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+.arrowhead { fill: var(--arrow); }
+@keyframes bar-fill { from { width: 0; } to { width: 220.00px; } }
+#bar-fill-poll-console { animation: bar-fill 3.99s linear infinite; }
+#bar-fill-wait-settle { animation: bar-fill 0.40s linear infinite; }
+#bar-fill-poll-boot { animation: bar-fill 3.99s linear infinite; }
+</style>
+<style>
+.lane-rail { stroke: var(--box-stroke); stroke-width: 1; stroke-dasharray: 2 4; fill: none; }
+.lane-edge { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+.lane-edge-poll { stroke: var(--accent); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+.ping { fill: var(--accent); }
+@keyframes ping-poll-console { from { cx: 290.00; } to { cx: 765.00; } }
+#ping-poll-console { animation: ping-poll-console 3.99s ease-in-out infinite alternate; }
+@keyframes ping-wait-settle { from { cx: 290.00; } to { cx: 945.00; } }
+#ping-wait-settle { animation: ping-wait-settle 0.40s ease-in-out infinite alternate; }
+@keyframes ping-poll-boot { from { cx: 290.00; } to { cx: 765.00; } }
+#ping-poll-boot { animation: ping-poll-boot 3.99s ease-in-out infinite alternate; }
+</style>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+</marker>
+</defs>
+<g id="step-lane-header-abgal">
+<rect class="box box-instant" x="30.00" y="30.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="160.00" y="58.00" text-anchor="middle">abgal start</text>
+</g>
+<g id="step-lane-header-kernel">
+<rect class="box box-instant" x="340.00" y="30.00" width="130.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="405.00" y="58.00" text-anchor="middle">kernel</text>
+</g>
+<g id="step-lane-header-emulator">
+<rect class="box box-instant" x="520.00" y="30.00" width="130.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="585.00" y="58.00" text-anchor="middle">emulator</text>
+</g>
+<g id="step-lane-header-adb">
+<rect class="box box-instant" x="700.00" y="30.00" width="130.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="765.00" y="58.00" text-anchor="middle">adb</text>
+</g>
+<g id="step-lane-header-watch">
+<rect class="box box-instant" x="880.00" y="30.00" width="130.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="945.00" y="58.00" text-anchor="middle">temperature watch</text>
+</g>
+<line class="lane-rail" x1="405.00" y1="98.00" x2="405.00" y2="1348.00"/>
+<line class="lane-rail" x1="585.00" y1="98.00" x2="585.00" y2="1348.00"/>
+<line class="lane-rail" x1="765.00" y1="98.00" x2="765.00" y2="1348.00"/>
+<line class="lane-rail" x1="945.00" y1="98.00" x2="945.00" y2="1348.00"/>
+<g id="step-preflight">
+<rect class="box box-instant" x="30.00" y="128.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="142.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="156.00" text-anchor="middle">refuses a running guest, or memory</text>
+<text class="label-main" x="160.00" y="168.00" text-anchor="middle">under ramSize + 900 + 1024 MB</text>
+</g>
+<line class="lane-edge" x1="290.00" y1="162.00" x2="405.00" y2="162.00" marker-end="url(#arrow)"/>
+<g id="step-launch">
+<rect class="box box-action" x="30.00" y="224.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="238.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="252.00" text-anchor="middle">starts the emulator, detached,</text>
+<text class="label-main" x="160.00" y="264.00" text-anchor="middle">logs to logs/&lt;guest&gt;/emulator.log</text>
+</g>
+<line class="lane-edge" x1="290.00" y1="258.00" x2="585.00" y2="258.00" marker-end="url(#arrow)"/>
+<g id="step-poll-console">
+<rect class="box box-poll" x="30.00" y="320.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="334.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="348.00" text-anchor="middle">asks adb every 2 s who this is, up</text>
+<text class="label-main" x="160.00" y="360.00" text-anchor="middle">to --timeout, unless gone by 15 s</text>
+<text class="label-duration" x="160.00" y="374.00" text-anchor="middle">up to 300 s</text>
+<rect class="bar-track" x="50.00" y="380.00" width="220.00" height="6.00" rx="3" ry="3"/>
+<rect id="bar-fill-poll-console" class="bar-fill" x="50.00" y="380.00" width="0" height="6.00" rx="3" ry="3"/>
+</g>
+<line class="lane-edge-poll" x1="290.00" y1="354.00" x2="765.00" y2="354.00"/>
+<circle id="ping-poll-console" class="ping" cx="290.00" cy="354.00" r="4.00"/>
+<g id="step-decision-console">
+<rect class="box box-decision" x="30.00" y="416.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="430.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="444.00" text-anchor="middle">console answered?</text>
+</g>
+<g id="step-fail-console">
+<rect class="box box-terminal box-bad" x="30.00" y="512.00" width="260.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-actor" x="160.00" y="526.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="540.00" text-anchor="middle">did not come up. Last log lines</text>
+<text class="label-main" x="160.00" y="552.00" text-anchor="middle">are printed.</text>
+</g>
+<g id="step-start-watch">
+<rect class="box box-action" x="30.00" y="608.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="622.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="636.00" text-anchor="middle">starts abgal watch as a</text>
+<text class="label-main" x="160.00" y="648.00" text-anchor="middle">subprocess, unless --no-watch</text>
+</g>
+<line class="lane-edge" x1="290.00" y1="642.00" x2="945.00" y2="642.00" marker-end="url(#arrow)"/>
+<g id="step-wait-settle">
+<rect class="box box-wait" x="30.00" y="704.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="718.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="732.00" text-anchor="middle">waits for the watch to settle,</text>
+<text class="label-main" x="160.00" y="744.00" text-anchor="middle">then checks it is alive</text>
+<text class="label-duration" x="160.00" y="758.00" text-anchor="middle">2 s</text>
+<rect class="bar-track" x="50.00" y="764.00" width="220.00" height="6.00" rx="3" ry="3"/>
+<rect id="bar-fill-wait-settle" class="bar-fill" x="50.00" y="764.00" width="0" height="6.00" rx="3" ry="3"/>
+</g>
+<line class="lane-edge-poll" x1="290.00" y1="738.00" x2="945.00" y2="738.00"/>
+<circle id="ping-wait-settle" class="ping" cx="290.00" cy="738.00" r="4.00"/>
+<g id="step-decision-watch">
+<rect class="box box-decision" x="30.00" y="800.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="814.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="828.00" text-anchor="middle">watch still alive?</text>
+</g>
+<g id="step-fail-watch">
+<rect class="box box-terminal box-bad" x="30.00" y="896.00" width="260.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-actor" x="160.00" y="910.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="924.00" text-anchor="middle">watch died at once. Guest keeps</text>
+<text class="label-main" x="160.00" y="936.00" text-anchor="middle">running without it.</text>
+</g>
+<g id="step-poll-boot">
+<rect class="box box-poll" x="30.00" y="992.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="1006.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="1020.00" text-anchor="middle">asks adb every 3 s for</text>
+<text class="label-main" x="160.00" y="1032.00" text-anchor="middle">boot_completed, up to --timeout</text>
+<text class="label-duration" x="160.00" y="1046.00" text-anchor="middle">up to 300 s</text>
+<rect class="bar-track" x="50.00" y="1052.00" width="220.00" height="6.00" rx="3" ry="3"/>
+<rect id="bar-fill-poll-boot" class="bar-fill" x="50.00" y="1052.00" width="0" height="6.00" rx="3" ry="3"/>
+</g>
+<line class="lane-edge-poll" x1="290.00" y1="1026.00" x2="765.00" y2="1026.00"/>
+<circle id="ping-poll-boot" class="ping" cx="290.00" cy="1026.00" r="4.00"/>
+<g id="step-decision-boot">
+<rect class="box box-decision" x="30.00" y="1088.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="1102.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="1116.00" text-anchor="middle">booted in time?</text>
+</g>
+<g id="step-fail-boot">
+<rect class="box box-terminal box-bad" x="30.00" y="1184.00" width="260.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-actor" x="160.00" y="1198.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="1212.00" text-anchor="middle">did not report a completed boot in</text>
+<text class="label-main" x="160.00" y="1224.00" text-anchor="middle">--timeout s.</text>
+</g>
+<g id="step-ready">
+<rect class="box box-terminal box-ok" x="30.00" y="1280.00" width="260.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-actor" x="160.00" y="1294.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="1308.00" text-anchor="middle">ready</text>
+</g>
+</svg>
