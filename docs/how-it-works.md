@@ -166,6 +166,17 @@ A guest keeps growing for minutes after it has booted. The check is done
 again for each guest of a batch, at the moment it is its turn, so the second
 guest sees the memory the first one really took. `--force` skips the check.
 
+If `/proc/meminfo` has no `MemAvailable`, there is no number to check
+against, and `start` says so with a note instead of skipping the check
+without a word. It starts the guest either way.
+
+A guest created before the memory change can still carry an old
+`hw.ramSize` that does not match its template, and `-lowram` makes that
+stored value win. `start` compares the two and, if they differ, prints a
+note naming `abgal create <template> --as <guest>` as the fix, which keeps
+the disk and only updates the values. It starts the guest with the value
+already on disk either way.
+
 ### Ports
 
 Without `--port` the emulator searches upwards from 5554 in steps of two and
