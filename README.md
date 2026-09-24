@@ -109,7 +109,7 @@ Run from the clone as `./abgal`, or put the clone on your `PATH`.
 | `abgal list` | Shows the templates in `devices.conf` and the guests on disk |
 | `abgal create <template>` | Creates one guest, named after the template |
 | `abgal create <template> --as ci --count 4` | Creates `ci-01` to `ci-04` |
-| `abgal create <template> --as dev --recreate` | Deletes `dev` first, then creates it again |
+| `abgal create <template> --as dev --recreate` | Deletes `dev` first, then creates it again. Asks first, `--yes` skips the question |
 | `abgal start -n <guest>` | Starts one guest and waits until it has booted |
 | `abgal start -n a -n b -n c` | Starts several, one after another, each with its own memory check |
 | `abgal start -n <guest> --locale ar-SA --timezone Asia/Riyadh` | Sets language and time zone. Without them a guest gets `en-US` and `Europe/Berlin`, not the values of the machine |

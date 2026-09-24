@@ -67,7 +67,9 @@ itself.
 
 `abgal create <template> --as dev` reads the template line from
 `devices.conf` and links `~/.android/devices.xml` to the file in the clone,
-unless that file already exists. Then it takes these steps once per guest:
+unless that file already exists. With `--recreate` it first asks once, naming
+every guest that exists and would be deleted. Without a terminal it refuses
+unless `--yes` is given. Then it takes these steps once per guest:
 
 1. refuses a name with anything but letters, digits, dot, underscore and dash
 2. checks that the screen is listed by `avdmanager list device`
