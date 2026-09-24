@@ -647,6 +647,20 @@ def cmd_create(args):
         width = max(2, len(str(args.count)))
         names = ["%s-%0*d" % (base, width, n) for n in range(1, args.count + 1)]
 
+    if args.recreate:
+        # One question covers the whole batch, so a --count run does not
+        # ask sixteen times over.
+        existing = [n for n in names if guest_folder(n).is_dir()]
+        if existing and not args.yes:
+            if not sys.stdin.isatty():
+                fail("nothing to ask on. Pass --yes to delete %s unattended."
+                     % ", ".join(existing))
+            answer = input("Delete %s and its disk? This cannot be undone. [y/N] "
+                            % ", ".join(existing))
+            if answer.strip().lower() not in ("y", "yes"):
+                print("Nothing was deleted.")
+                return 1
+
     row = next(r for r in template_rows() if r["name"] == args.template)
     link_devices_xml()
     failed = []
@@ -1520,6 +1534,8 @@ def build_parser():
                         help="create N guests, numbered from 01")
     create.add_argument("--recreate", action="store_true",
                         help="delete an existing guest of that name first")
+    create.add_argument("--yes", action="store_true",
+                        help="with --recreate, do not ask first")
     create.set_defaults(run=cmd_create, parser=create)
 
     delete = subs.add_parser("delete", help="delete one guest and its disk")
