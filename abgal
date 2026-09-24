@@ -760,14 +760,32 @@ def start_one(args, name):
     # is already up and still growing, so every start gets the number that is
     # true for it and not the one the first guest saw.
     config = read_ini(guest_folder(name) / "config.ini")
+    mark = guest_folder(name) / "abgal-template"
+    template_name = mark.read_text().strip() if mark.is_file() else None
     wanted = memory_mb(config.get("hw.ramSize")) + OVERHEAD_MB
     free = available_mb()
-    if free is not None and free < wanted + RESERVE_MB and not args.force:
+    if free is None:
+        # No MemAvailable means no number to compare against, not that
+        # memory is fine. --force already skips the check, so it skips the note too.
+        if not args.force:
+            print("Note: MemAvailable is not in /proc/meminfo, so the memory check was skipped.")
+    elif free < wanted + RESERVE_MB and not args.force:
         return problem(
             "%s needs about %d MB, %d MB are free, and %d MB stay reserved for\n"
             "       the machine. Stop a guest first, or insist with --force."
             % (name, wanted, free, RESERVE_MB)
         )
+
+    # Guests created before the memory change still carry the old hw.ramSize,
+    # and -lowram makes that stored value win over what the template says now.
+    if template_name:
+        row = next((r for r in template_rows() if r["name"] == template_name), None)
+        if row and memory_mb(config.get("hw.ramSize")) != int(row["ram"]):
+            stored = memory_mb(config.get("hw.ramSize"))
+            print("Note: %s has %d MB in its config.ini, its template\n"
+                  "      %s says %s MB." % (name, stored, template_name, row["ram"]))
+            print("      It starts with %d MB. To bring it in line, keeping its disk:" % stored)
+            print("      abgal create %s --as %s" % (template_name, name))
 
     command = [str(EMULATOR), "-avd", name]
     if args.port is not None:
@@ -805,9 +823,8 @@ def start_one(args, name):
     folder.mkdir(parents=True, exist_ok=True)
     logfile = folder / "emulator.log"
 
-    mark = guest_folder(name) / "abgal-template"
     print("Starting %s" % name)
-    field("Template", mark.read_text().strip() if mark.is_file() else "unknown")
+    field("Template", template_name or "unknown")
     field("Screen", "%sx%s at %s dpi" % (config.get("hw.lcd.width", "?"),
                                          config.get("hw.lcd.height", "?"),
                                          config.get("hw.lcd.density", "?")))
