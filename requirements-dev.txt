@@ -1,0 +1,6 @@
+# Development only. abgal itself stays standard library, nothing here is
+# needed to run it, only to test it.
+#
+#   python3 -m venv .venv
+#   .venv/bin/pip install -r requirements-dev.txt
+pytest==9.1.1

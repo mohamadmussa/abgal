@@ -3,7 +3,7 @@
 #   git config core.hooksPath .githooks
 set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
-python3 "$root/tools/check-private.py" --staged
+"$root/tools/run-all.sh"
 
 # Checks a contributor keeps for their own machine. tools/local/ is ignored,
 # so the file never reaches the repository and is skipped when it is missing.
