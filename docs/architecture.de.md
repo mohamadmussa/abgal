@@ -73,17 +73,21 @@ das seine console abfragt, ein Unterprozess für die Temperaturüberwachung,
 und eine zweite Abfrage, bis der Boot fertig ist. Drei Diagramme zeigen
 denselben realen Ablauf auf drei verschiedene Arten.
 
-Der Schaltplan zeigt die reale Verdrahtung: `abgal` und die vier Dinge, mit
-denen es spricht, der Kernel, der Emulator, adb und die
-Temperaturüberwachung, eine Leitung pro Paar. Ein kleiner Impuls leuchtet
-auf jeder Leitung genau in dem Moment auf, in dem dieser Kanal benutzt wird,
-sodass ein Kanal, der zweimal benutzt wird, adb für die console und erneut
-für den Boot, eine Leitung ist, die sichtbar zweimal pulsiert, nicht zwei
-getrennte Leitungen.
+Das Sequenzdiagramm zeichnet `start` so, wie ein echtes Sequenzdiagramm es
+tut: eine Lebenslinie pro Akteur, ein nummerierter Anfragepfeil und eine
+gepunktete Antwort für jeden echten Austausch, mit dem echten
+Nachrichtentext an jedem. Eine Abfrage bekommt einen schattierten Block um
+ihre Notiz und ihre zwei Zweige, keine Antwort rechtzeitig oder die echte
+Antwort. `wait-settle` sendet gar keine Nachricht, nur eine Notiz und
+seinen eigenen Zwei-Sekunden-Balken, weil abgal_start:wait_for_console nur
+schläft und dann seinen eigenen Kindprozess abfragt, nie die
+Temperaturüberwachung selbst. Jede der drei Arten, wie `start` scheitern
+kann, zeigt sich als kleine Schleife zurück auf abgals eigene Lebenslinie,
+mit den echten Worten, die `start` für diesen Fall ausgibt.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/start-circuit-dark.svg">
-  <img src="img/start-circuit-light.svg" alt="abgal and four actors it talks to, kernel, emulator, adb and the temperature watch, wired with one line each. A small dot on each wire lights up at the real moment that channel is used, twice on the adb wire, once for the console and once for the boot, and twice on the watch wire, starting it and then checking it is alive.">
+  <source media="(prefers-color-scheme: dark)" srcset="img/start-sequence-dark.svg">
+  <img src="img/start-sequence-light.svg" alt="A lifeline for abgal start, kernel, emulator, adb and the temperature watch. Numbered request and response arrows for preflight, launch, and starting the temperature watch. A shaded block around the console poll and the boot poll, each with a branch for no answer in time and a branch for the real answer. A rose block for the two second settle wait, a note and a bar only, no arrow. A small loop on abgal's own lifeline for each of the three ways start can fail. A green banner for ready at the end.">
 </picture>
 
 Die Bahnendarstellung legt dieselbe reale Abfolge entlang einer gemeinsamen
