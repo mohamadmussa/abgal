@@ -35,18 +35,16 @@ that one file, one command at a time.
 Every command moves a guest between the same small set of states, from a
 line in `devices.conf` through `create`, `start`, running, and back to
 stopped again, by either `abgal stop` or the temperature watch at 96 C.
-README.md already draws this as a state diagram, see
+README.md already draws this as an animated state diagram, see
 [Lifecycle](../README.md#lifecycle), so it is not repeated here.
-`docs/README.md` carries a second, slightly different copy of the same
-diagram, missing the memory refusal and the exact temperature. That is a
-small, existing inconsistency between two files, left as it is here rather
-than fixed as a side effect of this page.
+`docs/README.md` links to the same picture instead of keeping its own copy,
+so there is only one diagram to keep in step with the real states.
 
 ## Creating a guest
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/create-flow-dark.svg">
-  <img src="img/create-flow-light.svg" alt="Nine steps in a column for abgal create: refuse an invalid name; check the screen is listed by avdmanager; fetch the system image if missing; refuse a running guest; delete and recreate, or keep the disk; create avd/ and call avdmanager create avd; write abgal-template; pin five values in config.ini, a sixth for the store template; read config.ini back and compare thirteen values against what was asked for.">
+  <img src="img/create-flow-light.svg" alt="Nine numbered steps in a checklist, three rows of three read left to right then wrapped, for abgal create: refuse an invalid name; check the screen is listed by avdmanager; fetch the system image if missing; refuse a running guest; delete and recreate, or keep the disk; create avd/ and call avdmanager create avd; write abgal-template; pin five values in config.ini, a sixth for the store template; read config.ini back and compare thirteen values against what was asked for.">
 </picture>
 
 `abgal create` takes nine steps for every guest, ending with `create`
@@ -66,15 +64,19 @@ other: the emulator process itself, adb polling for its console, a
 temperature watch subprocess, and a second poll for the boot to finish.
 Three diagrams show the same real flow three different ways.
 
-Circuit shows the real wiring: `abgal` and the four things it talks to,
-the kernel, the emulator, adb and the temperature watch, one wire per pair.
-A small pulse lights up each wire at the true moment that channel is used,
-so a channel used twice, adb for the console and again for the boot, is
-one wire that visibly pulses twice, not two separate wires.
+Sequence draws `start` the way a real sequence diagram does: one lifeline
+per actor, a numbered request arrow and a dotted response for every real
+exchange, with the real message text on each. A poll gets a shaded block
+around its note and its two branches, no answer in time or the real
+answer. `wait-settle` sends no message at all, only a note and its own
+two second bar, since abgal_start:wait_for_console just sleeps and then
+reads its own child process, never the watch itself. Each of the three
+ways `start` can fail shows as a small loop back onto abgal's own
+lifeline, carrying the real words `start` prints for that case.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/start-circuit-dark.svg">
-  <img src="img/start-circuit-light.svg" alt="abgal and four actors it talks to, kernel, emulator, adb and the temperature watch, wired with one line each. A small dot on each wire lights up at the real moment that channel is used, twice on the adb wire, once for the console and once for the boot, and twice on the watch wire, starting it and then checking it is alive.">
+  <source media="(prefers-color-scheme: dark)" srcset="img/start-sequence-dark.svg">
+  <img src="img/start-sequence-light.svg" alt="A lifeline for abgal start, kernel, emulator, adb and the temperature watch. Numbered request and response arrows for preflight, launch, and starting the temperature watch. A shaded block around the console poll and the boot poll, each with a branch for no answer in time and a branch for the real answer. A rose block for the two second settle wait, a note and a bar only, no arrow. A small loop on abgal's own lifeline for each of the three ways start can fail. A green banner for ready at the end.">
 </picture>
 
 Swimlane lays the same real sequence out against a shared time axis, one

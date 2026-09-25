@@ -9,7 +9,7 @@ one diagram can never drift apart in layout, only in color.
 
     tools/gen-architecture-diagrams.py
 
-Running it with no arguments regenerates all sixteen files, eight
+Running it with no arguments regenerates all eighteen files, nine
 diagrams in light and dark, deterministically: the same flow always
 produces the same bytes. Which renderer draws which diagram, and the
 fact-by-fact derivation behind each flow, is tracked in issue #39, not
@@ -33,14 +33,6 @@ TARGET_LOOP_SECONDS = 8.0
 # down to an imperceptible flicker. The caption still shows the true,
 # uncompressed seconds; only the animation's own speed is floored.
 MIN_BAR_SECONDS = 0.4
-
-# start-circuit only: an instant/action step has no `seconds` of its own,
-# but still needs a slot on the shared timeline so the order its wire
-# activations light up in stays true to when the real step happens, not
-# just to which steps happen to carry a duration. Small and fixed, not
-# read from anywhere in abgal, because "no time passes" has no real
-# number to measure in the first place.
-FLASH_GAP_SECONDS = 0.2
 
 # watch-states only: a poll step whose real loop has no cap at all (the
 # main watch loop runs until stopped or aborted, unlike start's bounded
@@ -423,6 +415,37 @@ FLOW_PORTS = flow(
 )
 
 
+# ----------------------------------------------------------- readme-lifecycle
+
+
+# The eight transitions README.md#lifecycle names, minus the memory-refusal
+# self-loop (no equivalent shape in this renderer, drawn as a note beside
+# "stopped" instead by draw_lifecycle_note) and with "abgal stop" and the
+# temperature watch folded into one edge (both are real, separate causes,
+# but both name the same source and the same target, and this renderer
+# draws one curve per src/dst pair, not one per label). "booting" is the
+# only real wait in the whole lifecycle, so it is the only step that gets
+# a seconds value, the same 300 s FLOW_START's own poll-boot already uses,
+# never a second, invented timeout for the same real --timeout.
+FLOW_LIFECYCLE = flow(
+    steps=[
+        step("template", None, "template", "instant"),
+        step("stopped", None, "stopped", "instant"),
+        step("booting", None, "booting", "wait", 300, True),
+        step("running", None, "running", "instant"),
+        step("deleted", None, "deleted", "terminal", None, None, "ok"),
+    ],
+    edges=[
+        edge("template", "stopped", "abgal create"),
+        edge("stopped", "booting", "abgal start"),
+        edge("booting", "running", "boot completed"),
+        edge("booting", "stopped", "did not come up"),
+        edge("running", "stopped", "abgal stop, or temperature watch at 96 C"),
+        edge("stopped", "deleted", "abgal delete"),
+    ],
+)
+
+
 # -------------------------------------------------------------------- layout
 
 
@@ -483,6 +506,141 @@ def _layout(flow_):
     width = x_side + SIDE_W + MARGIN
     return {"positions": positions, "width": width, "height": height,
             "main_order": [s["id"] for s in main_steps]}
+
+
+LINEAR_COLS = 3
+LINEAR_COL_GAP = 60.0
+LINEAR_ROW_GAP = 70.0
+LINEAR_BADGE_R = 11.0
+
+
+def _layout_linear(flow_):
+    """A boustrophedon grid: reads left to right, then wraps like a
+    checklist, instead of one tall column.
+
+    create-flow has no decision and no side branch, nine plain actions in
+    a fixed order. Read as _layout's usual single column, nine identical
+    boxes give no visual cue that this is a checklist rather than a state
+    machine. Wrapping the column into a snake keeps every consecutive
+    step adjacent, row-mates side by side, a row wrap stacked at the same
+    x, so every edge stays a straight line, only its direction
+    alternates.
+    """
+    steps = flow_["steps"]
+    positions = {}
+    for i, s in enumerate(steps):
+        row, col = divmod(i, LINEAR_COLS)
+        if row % 2 == 1:
+            col = LINEAR_COLS - 1 - col
+        x = MARGIN + col * (BOX_W + LINEAR_COL_GAP)
+        y = MARGIN + row * (BOX_H + LINEAR_ROW_GAP)
+        positions[s["id"]] = {"x": x, "y": y, "w": BOX_W, "h": BOX_H,
+                              "step": s, "number": i + 1}
+    rows = -(-len(steps) // LINEAR_COLS)
+    width = MARGIN + LINEAR_COLS * BOX_W + (LINEAR_COLS - 1) * LINEAR_COL_GAP + MARGIN
+    height = MARGIN + rows * BOX_H + (rows - 1) * LINEAR_ROW_GAP + MARGIN
+    return {"positions": positions, "width": width, "height": height}
+
+
+STAIR_STEPS_PER_RUNG = 3
+STAIR_DX = 90.0
+
+
+def _layout_stairs(flow_):
+    """A staircase: three steps per escalation tier, each tier shifted
+    right of the last, so kill/SIGTERM/SIGKILL reads as a real descent
+    instead of the one flat column every other state ladder already is.
+
+    Built for stop-ladder specifically, not a general-purpose engine:
+    the count of three steps per rung and the assumption that exactly
+    one step (the "still running" terminal) follows the last rung are
+    both stop-ladder's own shape, not read from the flow. The shared
+    "stopped" exit is laid out exactly like _layout already places a
+    side box, off to the side at the average height of what points to
+    it, just computed here by hand since the staircase has no single
+    main column _layout's own math can reuse directly.
+    """
+    incoming = {}
+    for e in flow_["edges"]:
+        incoming.setdefault(e["to_id"], []).append(e)
+
+    side_ids = [s["id"] for s in flow_["steps"]
+                if len(incoming.get(s["id"], [])) > 1]
+    main_steps = [s for s in flow_["steps"] if s["id"] not in side_ids]
+    side_steps = [s for s in flow_["steps"] if s["id"] in side_ids]
+
+    # The escalation tiers proper, minus the trailing "still running"
+    # terminal, rounded up to whole rungs of three.
+    rungs = -(-(len(main_steps) - 1) // STAIR_STEPS_PER_RUNG)
+
+    positions = {}
+    for i, s in enumerate(main_steps):
+        rung = min(i // STAIR_STEPS_PER_RUNG, rungs - 1)
+        x = MARGIN + rung * STAIR_DX
+        y = MARGIN + i * PITCH
+        positions[s["id"]] = {"x": x, "y": y, "w": BOX_W, "h": BOX_H,
+                              "step": s}
+
+    x_side = MARGIN + rungs * STAIR_DX + BOX_W + SIDE_GAP
+    for s in side_steps:
+        sources_y = [positions[e["from_id"]]["y"] + positions[e["from_id"]]["h"] / 2
+                     for e in flow_["edges"]
+                     if e["to_id"] == s["id"] and e["from_id"] in positions]
+        cy = sum(sources_y) / len(sources_y) if sources_y else MARGIN
+        positions[s["id"]] = {"x": x_side, "y": cy - SIDE_H / 2,
+                              "w": SIDE_W, "h": SIDE_H, "step": s}
+
+    height = MARGIN + max(0, len(main_steps) - 1) * PITCH + BOX_H + MARGIN
+    width = x_side + SIDE_W + MARGIN
+    return {"positions": positions, "width": width, "height": height,
+            "main_order": [s["id"] for s in main_steps]}
+
+
+LIFECYCLE_MAIN_ORDER = ("template", "stopped", "booting", "running")
+LIFECYCLE_LOOP_1 = 55.0
+LIFECYCLE_LOOP_2 = 100.0
+LIFECYCLE_NOTE_TEXT = "abgal start, not enough memory: stays stopped"
+
+
+def _layout_lifecycle(flow_):
+    """template, stopped, booting, running in one column in that order,
+    "deleted" a side box off "stopped" the same way stop-ladder's shared
+    exit sits beside its own column, and the two edges that return to an
+    earlier state (booting failing, running stopping) as loops bulging
+    out to the left, deeper for the one that skips further back.
+
+    Built for FLOW_LIFECYCLE specifically, not a general engine: _layout's
+    generic side box only ever receives, but "stopped" here also sends
+    two edges of its own, template's create and its own delete, which a
+    plain side box has no sane way to draw, it would have to reach back
+    across the whole column.
+    """
+    by_id = dict((s["id"], s) for s in flow_["steps"])
+    main_order = list(LIFECYCLE_MAIN_ORDER)
+
+    back_labels = [e["label"] for e in flow_["edges"] if e["label"]
+                   and e["from_id"] in main_order and e["to_id"] in main_order
+                   and main_order.index(e["to_id"]) < main_order.index(e["from_id"])]
+    back_labels.append(LIFECYCLE_NOTE_TEXT)
+    label_room = max([len(t) * 6.0 for t in back_labels] + [0.0]) + 30.0
+
+    x_main = MARGIN + label_room + LIFECYCLE_LOOP_2
+    positions = {}
+    for i, sid in enumerate(main_order):
+        positions[sid] = {"x": x_main, "y": MARGIN + i * PITCH,
+                          "w": BOX_W, "h": BOX_H, "step": by_id[sid]}
+
+    stopped = positions["stopped"]
+    x_side = x_main + BOX_W + SIDE_GAP
+    positions["deleted"] = {
+        "x": x_side,
+        "y": stopped["y"] + stopped["h"] / 2.0 - SIDE_H / 2.0,
+        "w": SIDE_W, "h": SIDE_H, "step": by_id["deleted"]}
+
+    height = MARGIN + (len(main_order) - 1) * PITCH + BOX_H + MARGIN
+    width = x_side + SIDE_W + MARGIN
+    return {"positions": positions, "width": width, "height": height,
+            "main_order": main_order}
 
 
 TOPO_NODE_W = 220.0
@@ -603,53 +761,103 @@ def _layout_swimlane(flow_):
             "header_y": header_y, "width": width, "height": height}
 
 
-# start-circuit only: a fixed two-above, two-below split of the same four
-# actors, in the same order LANE_ORDER already lists them. Unlike
-# pieces-topology's inputs/outputs, a circuit's wiring has no verb to
-# split by, so the partition is just written down instead of computed.
-CIRCUIT_ABOVE = ("kernel", "emulator")
-CIRCUIT_BELOW = ("adb", "watch")
-FLASH_DOT_R = 4.0
-PULSE_DOT_R = 6.0
+# start-sequence: a literal sequence diagram, one block per real exchange
+# in main_order. A one-shot step (preflight, launch, start-watch) is a
+# plain request/response pair. A poll with a real decision after it
+# (poll-console, poll-boot) gets a shaded rect around its note, its
+# request, and a nested alt frame for the two branches. wait-settle sends
+# no message at all (abgal_start:wait_for_console sleeps, then reads its
+# own child process handle), so its rect holds only a note and a wait bar,
+# and the alt frame for its decision stays unshaded and narrow, both
+# branches self-referential. Swimlane's own lane_x/lane_w carries over
+# unchanged; only the row rhythm is new.
+SEQ_NOTE_GAP = 18.0
+SEQ_ROW_GAP = 22.0
+SEQ_RECT_PAD = 14.0
+SEQ_BLOCK_GAP = 26.0
+SEQ_BAR_ROW_H = 24.0
+SEQ_LOOP_W = 44.0
+# An alt frame's own inner rhythm: [header] text, a gap, up to two
+# wrapped lines of content, a gap before the next header. SEQ_CONTENT_H
+# is sized for the self-loop branch's real fail-* text (the longest
+# content either branch ever holds), so the divider never lands inside a
+# wrapped second line the way a tighter guess once did.
+SEQ_ALT_TOP_PAD = 16.0
+SEQ_ALT_BRANCH_GAP = 14.0
+SEQ_ALT_CONTENT_H = 28.0
+SEQ_ALT_BOTTOM_PAD = 16.0
 
 
-def _layout_circuit():
-    """abgal as the hub, its four satellites two above and two below.
+def _alt_geometry(top):
+    header1_y = top + SEQ_ALT_TOP_PAD
+    branch1_y = header1_y + SEQ_ALT_BRANCH_GAP
+    divider_y = branch1_y + SEQ_ALT_CONTENT_H
+    header2_y = divider_y + SEQ_ALT_TOP_PAD
+    branch2_y = header2_y + SEQ_ALT_BRANCH_GAP
+    bottom = branch2_y + SEQ_ALT_BOTTOM_PAD
+    return {"alt_top": top, "header1_y": header1_y, "branch1_y": branch1_y,
+            "divider_y": divider_y, "header2_y": header2_y,
+            "branch2_y": branch2_y, "alt_bottom": bottom}
 
-    The same hub-and-spoke shape _layout_topology already proves out,
-    reusing its constants (TOPO_NODE_W/TOPO_COL_GAP/TOPO_ROW_GAP) so the
-    two diagrams share one rhythm. Fixed by CIRCUIT_ABOVE/BELOW rather
-    than derived from a flow, so this takes no flow_ argument: the wiring
-    is five nodes, always the same five, not read off any one flow.
+
+def _layout_sequence(flow_):
+    """One block per real exchange, walking main_order. A poll or wait
+    step immediately followed by a decision consumes that decision too,
+    folding its alt frame into the same block, since a decision step
+    never gets a row of its own, only ever the branch that follows the
+    exchange it judges. Every y an alt frame needs is computed once,
+    here, by _alt_geometry, so draw_sequence never re-derives a divider
+    or header position from a different formula than the one that
+    reserved the space for it.
     """
-    by_lane = {
-        "abgal": step("circuit-abgal", None, "abgal start", "instant"),
-        "kernel": step("circuit-kernel", None, "kernel", "instant"),
-        "emulator": step("circuit-emulator", None, "emulator", "instant"),
-        "adb": step("circuit-adb", None, "adb", "instant"),
-        "watch": step("circuit-watch", None, "temperature watch", "instant"),
-    }
-    main_w = max(_topo_row_width(len(CIRCUIT_ABOVE)),
-                 _topo_row_width(len(CIRCUIT_BELOW)), TOPO_NODE_W)
-    positions = {}
+    swim = _layout_swimlane(flow_)
+    main_order = _layout(flow_)["main_order"]
+    by_id = dict((s["id"], s) for s in flow_["steps"])
 
-    def place_row(lanes, y):
-        x = MARGIN + (main_w - _topo_row_width(len(lanes))) / 2.0
-        for lane in lanes:
-            positions[lane] = {"x": x, "y": y, "w": TOPO_NODE_W, "h": BOX_H,
-                              "step": by_lane[lane]}
-            x += TOPO_NODE_W + TOPO_COL_GAP
+    blocks = []
+    y = swim["header_y"] + SWIM_HEADER_H + 40.0
+    i = 0
+    while i < len(main_order):
+        sid = main_order[i]
+        s = by_id[sid]
+        nxt_id = main_order[i + 1] if i + 1 < len(main_order) else None
+        nxt = by_id[nxt_id] if nxt_id else None
+        alt_id = nxt_id if nxt is not None and nxt["kind"] == "decision" else None
 
-    y_above = MARGIN
-    y_hub = y_above + BOX_H + TOPO_ROW_GAP
-    y_below = y_hub + BOX_H + TOPO_ROW_GAP
-    place_row(CIRCUIT_ABOVE, y_above)
-    place_row(["abgal"], y_hub)
-    place_row(CIRCUIT_BELOW, y_below)
+        if s["kind"] == "terminal":
+            block = {"type": "ready", "id": sid, "y": y}
+            y += BOX_H + 20.0
+        elif s["kind"] == "poll" and s["seconds"]:
+            note_y = y
+            req_y = note_y + SEQ_NOTE_GAP + 14.0
+            alt = _alt_geometry(req_y + SEQ_ROW_GAP)
+            block = dict(alt, type="poll", id=sid, alt_id=alt_id,
+                        rect_top=note_y - SEQ_RECT_PAD, note_y=note_y,
+                        req_y=req_y,
+                        rect_bottom=alt["alt_bottom"] + SEQ_RECT_PAD)
+            y = block["rect_bottom"] + SEQ_BLOCK_GAP
+        elif s["kind"] == "wait" and s["seconds"]:
+            note_y = y
+            bar_y = note_y + SEQ_NOTE_GAP + 10.0
+            rect_bottom = bar_y + SEQ_BAR_ROW_H + SEQ_RECT_PAD
+            alt = _alt_geometry(rect_bottom + 16.0)
+            block = dict(alt, type="wait", id=sid, alt_id=alt_id,
+                        rect_top=note_y - SEQ_RECT_PAD, note_y=note_y,
+                        bar_y=bar_y, rect_bottom=rect_bottom)
+            y = alt["alt_bottom"] + SEQ_BLOCK_GAP
+        else:
+            req_y = y
+            resp_y = req_y + 22.0
+            block = {"type": "pair", "id": sid, "req_y": req_y,
+                     "resp_y": resp_y}
+            y = resp_y + SEQ_BLOCK_GAP
 
-    width = MARGIN + main_w + MARGIN
-    height = y_below + BOX_H + MARGIN
-    return {"positions": positions, "width": width, "height": height}
+        blocks.append(block)
+        i += 2 if alt_id else 1
+
+    layout = dict(swim, blocks=blocks, height=y + MARGIN)
+    layout["width"] += 20.0
+    return layout
 
 
 # ports-scale only: a row of fixed slots above a row of illustrative
@@ -769,13 +977,8 @@ def _box_markup(pos):
         parts.append('<text class="label-main" x="%s" y="%s" '
                      'text-anchor="middle">%s</text>'
                      % (fnum(cx), fnum(y + 28 + i * 12), _esc(line)))
-    if s["seconds"] is not None:
-        if s["cap"] == "loop":
-            caption = "%d s, no limit ..." % s["seconds"]
-        elif s["cap"]:
-            caption = "up to %d s" % s["seconds"]
-        else:
-            caption = "%d s" % s["seconds"]
+    caption = _duration_caption(s)
+    if caption:
         parts.append('<text class="label-duration" x="%s" y="%s" '
                      'text-anchor="middle">%s</text>'
                      % (fnum(cx), fnum(y + 54), _esc(caption)))
@@ -845,6 +1048,188 @@ def draw_states(flow_):
         parts.append(_box_markup(positions[s["id"]]))
     for e in flow_["edges"]:
         parts.append(_edge_markup(e, positions, main_order))
+    return "\n".join(parts)
+
+
+def draw_lifecycle_note(layout):
+    """The memory-refusal self-loop, as a note beside "stopped" instead of
+    a drawn arrow back onto itself.
+
+    _edge_markup only ever connects two different boxes; one box that is
+    both the source and the target of the same curve would need a shape
+    nothing else in this file draws, for one edge that is not a step to a
+    different state anyway, it is "start refused, nothing changed".
+    """
+    pos = layout["positions"]["stopped"]
+    note_x = pos["x"] - LIFECYCLE_LOOP_2 - 20.0
+    note_y = pos["y"] + pos["h"] / 2.0 + 4.0
+    return ('<text class="label-note" x="%s" y="%s" text-anchor="end">'
+           '%s</text>'
+           % (fnum(note_x), fnum(note_y), _esc(LIFECYCLE_NOTE_TEXT)))
+
+
+def _linear_badge_markup(pos):
+    """The small numbered circle at a box's top-left corner, create-flow's
+    own cue that this diagram reads as an ordered checklist."""
+    cx, cy, number = pos["x"], pos["y"], pos["number"]
+    parts = ['<circle class="linear-badge" cx="%s" cy="%s" r="%s"/>'
+            % (fnum(cx), fnum(cy), fnum(LINEAR_BADGE_R))]
+    parts.append('<text class="linear-badge-text" x="%s" y="%s" '
+                 'text-anchor="middle">%s</text>'
+                 % (fnum(cx), fnum(cy + 4.0), number))
+    return "\n".join(parts)
+
+
+def _linear_edge_markup(e, positions):
+    """One arrow of the checklist: sideways within a row, straight down
+    where the snake wraps to the next one."""
+    src, dst = positions[e["from_id"]], positions[e["to_id"]]
+    if src["y"] == dst["y"]:
+        if dst["x"] >= src["x"]:
+            x1, x2 = src["x"] + src["w"], dst["x"]
+        else:
+            x1, x2 = src["x"], dst["x"] + dst["w"]
+        y1 = y2 = src["y"] + src["h"] / 2.0
+    else:
+        x1 = x2 = src["x"] + src["w"] / 2.0
+        y1, y2 = src["y"] + src["h"], dst["y"]
+    path = ('<line class="edge" x1="%s" y1="%s" x2="%s" y2="%s" '
+           'marker-end="url(#arrow)"/>'
+           % (fnum(x1), fnum(y1), fnum(x2), fnum(y2)))
+    out = [path]
+    if e["label"]:
+        label_x, label_y = (x1 + x2) / 2.0, y1 - 6.0
+        out.append('<text class="label-edge" x="%s" y="%s" '
+                   'text-anchor="middle">%s</text>'
+                   % (fnum(label_x), fnum(label_y), _esc(e["label"])))
+    return "\n".join(out)
+
+
+def draw_linear(flow_):
+    """The body markup of a boustrophedon checklist diagram.
+
+    Reuses _box_markup for every box unchanged, a plain action step needs
+    nothing _box_markup does not already draw; only the grid position and
+    a numbered badge are new.
+    """
+    layout = _layout_linear(flow_)
+    positions = layout["positions"]
+    parts = [DEFS_MARKUP]
+    for s in flow_["steps"]:
+        parts.append(_box_markup(positions[s["id"]]))
+        parts.append(_linear_badge_markup(positions[s["id"]]))
+    for e in flow_["edges"]:
+        parts.append(_linear_edge_markup(e, positions))
+    return "\n".join(parts)
+
+
+def _stairs_edge_markup(e, positions, main_order):
+    """One arrow of the staircase: straight from one step to the next,
+    vertical inside a rung and diagonal where the rung changes, or an
+    S-curve out to the shared "stopped" box."""
+    src, dst = positions[e["from_id"]], positions[e["to_id"]]
+    if e["to_id"] in main_order:
+        x1, y1 = src["x"] + src["w"] / 2.0, src["y"] + src["h"]
+        x2, y2 = dst["x"] + dst["w"] / 2.0, dst["y"]
+        path = ('<line class="edge" x1="%s" y1="%s" x2="%s" y2="%s" '
+               'marker-end="url(#arrow)"/>'
+               % (fnum(x1), fnum(y1), fnum(x2), fnum(y2)))
+        label_x, label_y = x1 + 10.0, (y1 + y2) / 2.0
+    else:
+        x1, y1 = src["x"] + src["w"], src["y"] + src["h"] / 2.0
+        x2, y2 = dst["x"], dst["y"] + dst["h"] / 2.0
+        gap = (x2 - x1) / 2.0
+        c1x, c2x = x1 + gap, x2 - gap
+        path = ('<path class="edge" d="M %s %s C %s %s, %s %s, %s %s" '
+               'marker-end="url(#arrow)"/>'
+               % (fnum(x1), fnum(y1), fnum(c1x), fnum(y1),
+                  fnum(c2x), fnum(y2), fnum(x2), fnum(y2)))
+        label_x, label_y = x1 + 10.0, y1 - 8.0
+
+    out = [path]
+    if e["label"]:
+        out.append('<text class="label-edge" x="%s" y="%s" '
+                   'text-anchor="middle">%s</text>'
+                   % (fnum(label_x), fnum(label_y), _esc(e["label"])))
+    return "\n".join(out)
+
+
+def draw_stairs(flow_):
+    """The body markup of the stop-ladder staircase: boxes, bars, arrows."""
+    layout = _layout_stairs(flow_)
+    positions, main_order = layout["positions"], layout["main_order"]
+    parts = [DEFS_MARKUP]
+    for s in flow_["steps"]:
+        parts.append(_box_markup(positions[s["id"]]))
+    for e in flow_["edges"]:
+        parts.append(_stairs_edge_markup(e, positions, main_order))
+    return "\n".join(parts)
+
+
+def _lifecycle_edge_markup(e, positions, main_order):
+    """One arrow of the lifecycle column: a straight drop for a forward
+    step, a loop bulging out to the left for a step back onto an earlier
+    state, or an S-curve out to the "deleted" side box.
+
+    The loop is what _edge_markup has no shape for: two of this flow's
+    edges land back on "stopped" from further down the same column, not
+    from a side box, so they need their own curve out and back rather
+    than the generic side-box S.
+    """
+    src, dst = positions[e["from_id"]], positions[e["to_id"]]
+    src_i = main_order.index(e["from_id"]) if e["from_id"] in main_order else None
+    dst_i = main_order.index(e["to_id"]) if e["to_id"] in main_order else None
+
+    if src_i is not None and dst_i is not None and dst_i == src_i + 1:
+        x1, y1 = src["x"] + src["w"] / 2.0, src["y"] + src["h"]
+        x2, y2 = dst["x"] + dst["w"] / 2.0, dst["y"]
+        path = ('<line class="edge" x1="%s" y1="%s" x2="%s" y2="%s" '
+               'marker-end="url(#arrow)"/>'
+               % (fnum(x1), fnum(y1), fnum(x2), fnum(y2)))
+        label_x, label_y = x1 + 10.0, (y1 + y2) / 2.0
+        anchor = "middle"
+    elif src_i is not None and dst_i is not None and dst_i < src_i:
+        depth = LIFECYCLE_LOOP_1 if src_i - dst_i == 1 else LIFECYCLE_LOOP_2
+        x1, y1 = src["x"], src["y"] + src["h"] / 2.0
+        x2, y2 = dst["x"], dst["y"] + dst["h"] / 2.0
+        c1x, c2x = x1 - depth, x2 - depth
+        path = ('<path class="edge" d="M %s %s C %s %s, %s %s, %s %s" '
+               'marker-end="url(#arrow)"/>'
+               % (fnum(x1), fnum(y1), fnum(c1x), fnum(y1),
+                  fnum(c2x), fnum(y2), fnum(x2), fnum(y2)))
+        label_x, label_y = x1 - depth - 8.0, (y1 + y2) / 2.0
+        anchor = "end"
+    else:
+        x1, y1 = src["x"] + src["w"], src["y"] + src["h"] / 2.0
+        x2, y2 = dst["x"], dst["y"] + dst["h"] / 2.0
+        gap = SIDE_GAP / 2.0
+        c1x, c2x = x1 + gap, x2 - gap
+        path = ('<path class="edge" d="M %s %s C %s %s, %s %s, %s %s" '
+               'marker-end="url(#arrow)"/>'
+               % (fnum(x1), fnum(y1), fnum(c1x), fnum(y1),
+                  fnum(c2x), fnum(y2), fnum(x2), fnum(y2)))
+        label_x, label_y = x1 + 10.0, y1 - 8.0
+        anchor = "middle"
+
+    out = [path]
+    if e["label"]:
+        out.append('<text class="label-edge" x="%s" y="%s" '
+                   'text-anchor="%s">%s</text>'
+                   % (fnum(label_x), fnum(label_y), anchor, _esc(e["label"])))
+    return "\n".join(out)
+
+
+def draw_lifecycle(flow_):
+    """The body markup of the README lifecycle column: boxes, arrows, the
+    memory-refusal note beside "stopped"."""
+    layout = _layout_lifecycle(flow_)
+    positions, main_order = layout["positions"], layout["main_order"]
+    parts = [DEFS_MARKUP]
+    for s in flow_["steps"]:
+        parts.append(_box_markup(positions[s["id"]]))
+    for e in flow_["edges"]:
+        parts.append(_lifecycle_edge_markup(e, positions, main_order))
+    parts.append(draw_lifecycle_note(layout))
     return "\n".join(parts)
 
 
@@ -964,95 +1349,225 @@ def draw_swimlane(flow_, channels):
     return "\n".join(parts)
 
 
-def _wire_points(positions, satellite):
-    """The same hub-edge-to-satellite-edge endpoints _topology_edge_markup
-    computes internally, exposed here so activation dots can be placed
-    along the same line without duplicating _topology_edge_markup itself
-    or having it hand back geometry none of its other callers need.
+def _duration_caption(s):
+    """The real-seconds text a poll or wait step carries, factored out of
+    _box_markup so draw_sequence's self-loops can show the same words.
     """
-    hub, sat = positions["abgal"], positions[satellite]
-    hub_cx, sat_cx = hub["x"] + hub["w"] / 2.0, sat["x"] + sat["w"] / 2.0
-    if sat["y"] < hub["y"]:
-        return hub_cx, hub["y"], sat_cx, sat["y"] + sat["h"]
-    return hub_cx, hub["y"] + hub["h"], sat_cx, sat["y"]
+    if s["seconds"] is None:
+        return None
+    if s["cap"] == "loop":
+        return "%d s, no limit ..." % s["seconds"]
+    if s["cap"]:
+        return "up to %d s" % s["seconds"]
+    return "%d s" % s["seconds"]
 
 
-def _channel_timeline(flow_, channels):
-    """Each channel-bearing step's cumulative start offset and own active
-    span, walked in the flow's real happy-path order (_layout's own main
-    column, the same order start-states already draws top to bottom) and
-    its already-scaled seconds. A step with no `seconds` of its own
-    (instant/action/decision/terminal) counts as one FLASH_GAP_SECONDS,
-    just enough to keep the true order without inventing a duration abgal
-    itself does not have for that step.
+# The message text on each request/response arrow: real vocabulary from
+# FLOW_START's own step labels and abgal_start:773-952, condensed to what
+# fits on one line the way a real sequenceDiagram's message text does.
+SEQ_REQUEST_LABEL = {
+    "preflight": "preflight, refuse a running guest or too little memory",
+    "launch": "launch, detached, logs to emulator.log",
+    "poll-console": "who is this, every 2 s",
+    "start-watch": "start abgal watch as a subprocess",
+    "poll-boot": "boot_completed, every 3 s",
+}
+SEQ_RESPONSE_LABEL = {
+    "preflight": "ok", "launch": "launched", "poll-console": "answered",
+    "start-watch": "started", "poll-boot": "booted",
+}
+SEQ_POLL_NOTE = {
+    "poll-console": "poll console, up to 300 s",
+    "poll-boot": "poll boot, up to 300 s",
+}
+SEQ_WAIT_NOTE = {
+    "wait-settle": "wait settle, fixed 2 s, then abgal checks its own "
+                   "child process",
+}
+# The alt frame's two condition headers, the only wording in this engine
+# with no FIELDS column of its own to read from; the "no" branch's own
+# message still comes straight from the matching fail-* step's real
+# label, never invented here.
+SEQ_ALT_HEADERS = {
+    "decision-console": ("no answer in time", "console answered"),
+    "decision-watch": ("watch died at once", "watch still alive"),
+    "decision-boot": ("not booted in time", "booted in time"),
+}
+
+
+def _seq_fail_id(flow_, decision_id):
+    for e in flow_["edges"]:
+        if e["from_id"] == decision_id and e["label"] == "no":
+            return e["to_id"]
+    return None
+
+
+def draw_sequence(flow_, channels):
+    """The body markup of a literal sequence diagram: a lifeline per
+    actor, solid request and dotted response arrows with real message
+    text, a shaded rect around a poll's note and its alt branches, an
+    unshaded, narrow alt alone for wait-settle's decision since that step
+    itself sends no message for a rect to hold.
     """
-    scale = _scale(flow_)
-    main_order = _layout(flow_)["main_order"]
+    layout = _layout_sequence(flow_)
+    lane_x, lane_w = layout["lane_x"], layout["lane_w"]
     by_id = dict((s["id"], s) for s in flow_["steps"])
-    offset = 0.0
-    timeline = []
-    for sid in main_order:
-        s = by_id[sid]
-        sustained = s["kind"] in ("poll", "wait") and s["seconds"]
-        own = max(s["seconds"] * scale, MIN_BAR_SECONDS) if sustained \
-            else FLASH_GAP_SECONDS
-        if sid in channels:
-            timeline.append({"id": sid, "target": channels[sid],
-                             "offset": offset, "own": own,
-                             "sustained": bool(sustained)})
-        offset += own
-    return timeline
-
-
-def _wire_fractions(timeline):
-    """Where along its wire each activation's dot sits.
-
-    One activation on a wire sits at its midpoint. Two (poll-console and
-    poll-boot both target adb, start-watch and wait-settle both target
-    watch) split it instead, the earlier one nearer the hub and the later
-    one nearer the satellite, so the two read apart by position as well
-    as by when they light up.
-    """
-    by_target = {}
-    for entry in timeline:
-        by_target.setdefault(entry["target"], []).append(entry)
-    fractions = {}
-    for entries in by_target.values():
-        step_frac = 1.0 / (len(entries) + 1)
-        for i, entry in enumerate(entries):
-            fractions[entry["id"]] = step_frac * (i + 1)
-    return fractions
-
-
-def draw_circuit(flow_, channels):
-    """The body markup of a circuit diagram: one fixed wire per actor.
-
-    Nodes and wires are static, reusing _box_markup and
-    _topology_edge_markup exactly as pieces-topology draws them. What
-    moves is a small dot per channel-bearing step, riding at a fixed
-    point on its wire; _circuit_extra_css gives each one its own flash
-    (instant/action) or pulse (poll/wait) animation, timed by
-    _channel_timeline so two steps sharing one wire (both adb, both
-    watch) light up at different points in the shared loop, not at once.
-    """
-    positions = _layout_circuit()["positions"]
     parts = [DEFS_MARKUP]
-    for lane in LANE_ORDER:
-        parts.append(_box_markup(positions[lane]))
-    for lane in LANE_ORDER:
-        if lane != "abgal":
-            parts.append(_topology_edge_markup(edge("abgal", lane), positions))
 
-    timeline = _channel_timeline(flow_, channels)
-    fractions = _wire_fractions(timeline)
-    for entry in timeline:
-        x1, y1, x2, y2 = _wire_points(positions, entry["target"])
-        t = fractions[entry["id"]]
-        dot_x, dot_y = x1 + (x2 - x1) * t, y1 + (y2 - y1) * t
-        r = PULSE_DOT_R if entry["sustained"] else FLASH_DOT_R
-        cls = "wire-dot-pulse" if entry["sustained"] else "wire-dot-flash"
-        parts.append('<circle id="dot-%s" class="%s" cx="%s" cy="%s" r="%s"/>'
-                     % (entry["id"], cls, fnum(dot_x), fnum(dot_y), fnum(r)))
+    for lane in LANE_ORDER:
+        header = step("lane-header-%s" % lane, None, LANE_LABELS[lane],
+                      "instant")
+        parts.append(_box_markup({"x": lane_x[lane], "y": layout["header_y"],
+                                  "w": lane_w[lane], "h": SWIM_HEADER_H,
+                                  "step": header}))
+
+    rail_top = layout["header_y"] + SWIM_HEADER_H
+    rail_bottom = layout["height"] - MARGIN
+    for lane in LANE_ORDER:
+        cx = lane_x[lane] + lane_w[lane] / 2.0
+        parts.append('<line class="lane-rail" x1="%s" y1="%s" x2="%s" y2="%s"/>'
+                     % (fnum(cx), fnum(rail_top), fnum(cx), fnum(rail_bottom)))
+
+    abgal_cx = lane_x["abgal"] + lane_w["abgal"] / 2.0
+    # Every alt frame shares one width, wide enough for the poll blocks'
+    # real message to adb, so the wait-settle decision's frame (no other
+    # participant involved) is not left too narrow for its own longest
+    # fail-* text to wrap into, the bug an earlier, narrower guess had.
+    adb_right = lane_x["adb"] + lane_w["adb"]
+    alt_frame_x = abgal_cx - BOX_W / 2.0 - 6.0
+    alt_frame_w = adb_right - alt_frame_x + 16.0
+    number = [0]
+
+    def request(x2, y, cls, label):
+        number[0] += 1
+        parts.append('<line class="%s" x1="%s" y1="%s" x2="%s" y2="%s" '
+                     'marker-end="url(#arrow)"/>'
+                     % (cls, fnum(abgal_cx), fnum(y), fnum(x2), fnum(y)))
+        parts.append('<text class="label-edge" x="%s" y="%s" '
+                     'text-anchor="middle">%d. %s</text>'
+                     % (fnum((abgal_cx + x2) / 2.0), fnum(y - 6), number[0],
+                        _esc(label)))
+
+    def response(x2, y, label):
+        number[0] += 1
+        parts.append('<line class="seq-edge-resp" x1="%s" y1="%s" x2="%s" '
+                     'y2="%s" marker-end="url(#arrow)"/>'
+                     % (fnum(x2), fnum(y), fnum(abgal_cx), fnum(y)))
+        parts.append('<text class="label-edge" x="%s" y="%s" '
+                     'text-anchor="middle">%d. %s</text>'
+                     % (fnum((abgal_cx + x2) / 2.0), fnum(y - 6), number[0],
+                        _esc(label)))
+
+    def self_fail(y, label, max_w):
+        number[0] += 1
+        x = abgal_cx + 10.0
+        loop = ('M %s %s C %s %s, %s %s, %s %s'
+               % (fnum(x), fnum(y), fnum(x + SEQ_LOOP_W), fnum(y),
+                  fnum(x + SEQ_LOOP_W), fnum(y + 16), fnum(x), fnum(y + 16)))
+        parts.append('<path class="seq-edge-fail" d="%s" '
+                     'marker-end="url(#arrow)"/>' % loop)
+        text_x = x + SEQ_LOOP_W + 8
+        for i, line in enumerate(_wrap(label, max_w)[:2]):
+            parts.append('<text class="label-edge" x="%s" y="%s">%s</text>'
+                         % (fnum(text_x), fnum(y + 4 + i * 12),
+                            ("%d. %s" % (number[0], _esc(line))) if i == 0
+                            else _esc(line)))
+
+    for block in layout["blocks"]:
+        sid = block["id"]
+        s = by_id[sid]
+        btype = block["type"]
+
+        if btype == "ready":
+            ready_w = layout["width"] - 2 * MARGIN - 20.0
+            parts.append(_box_markup({"x": MARGIN, "y": block["y"],
+                                      "w": ready_w, "h": BOX_H, "step": s}))
+            continue
+
+        if btype == "pair":
+            target = channels[sid]
+            x2 = lane_x[target] + lane_w[target] / 2.0
+            request(x2, block["req_y"], "seq-edge-req", SEQ_REQUEST_LABEL[sid])
+            response(x2, block["resp_y"],
+                    "%s (instant)" % SEQ_RESPONSE_LABEL[sid])
+            continue
+
+        alt_id = block.get("alt_id")
+        headers = SEQ_ALT_HEADERS.get(alt_id, ("", ""))
+        fail_id = _seq_fail_id(flow_, alt_id) if alt_id else None
+        fail_label = by_id[fail_id]["label"] if fail_id else ""
+
+        if btype == "poll":
+            target = channels[sid]
+            x2 = lane_x[target] + lane_w[target] / 2.0
+            rect_x, rect_w = alt_frame_x, alt_frame_w
+            parts.append('<rect class="seq-rect-poll" x="%s" y="%s" '
+                         'width="%s" height="%s" rx="6" ry="6"/>'
+                         % (fnum(rect_x), fnum(block["rect_top"]),
+                            fnum(rect_w),
+                            fnum(block["rect_bottom"] - block["rect_top"])))
+            parts.append('<text class="label-note" x="%s" y="%s">%s</text>'
+                         % (fnum(rect_x + 8), fnum(block["note_y"]),
+                            _esc(SEQ_POLL_NOTE[sid])))
+            request(x2, block["req_y"], "seq-edge-poll", SEQ_REQUEST_LABEL[sid])
+            parts.append('<circle id="seq-ping-%s" class="ping" cx="%s" '
+                         'cy="%s" r="3.5"/>'
+                         % (sid, fnum(abgal_cx), fnum(block["req_y"])))
+        else:
+            rect_x = abgal_cx - BOX_W / 2.0
+            rect_w = BOX_W
+            parts.append('<rect class="seq-rect-wait" x="%s" y="%s" '
+                         'width="%s" height="%s" rx="6" ry="6"/>'
+                         % (fnum(rect_x), fnum(block["rect_top"]),
+                            fnum(rect_w),
+                            fnum(block["rect_bottom"] - block["rect_top"])))
+            for i, line in enumerate(_wrap(SEQ_WAIT_NOTE[sid], rect_w - 16)):
+                parts.append('<text class="label-note" x="%s" y="%s">%s'
+                             '</text>' % (fnum(rect_x + 8),
+                                         fnum(block["note_y"] + i * 12),
+                                         _esc(line)))
+            bar_x = abgal_cx - BAR_W / 2.0
+            parts.append('<rect class="bar-track" x="%s" y="%s" width="%s" '
+                         'height="%s" rx="3" ry="3"/>'
+                         % (fnum(bar_x), fnum(block["bar_y"]), fnum(BAR_W),
+                            fnum(BAR_H)))
+            parts.append('<rect id="bar-fill-%s" class="bar-fill" x="%s" '
+                         'y="%s" width="0" height="%s" rx="3" ry="3"/>'
+                         % (sid, fnum(bar_x), fnum(block["bar_y"]),
+                            fnum(BAR_H)))
+            parts.append('<text class="label-duration" x="%s" y="%s" '
+                         'text-anchor="middle">2 s</text>'
+                         % (fnum(abgal_cx), fnum(block["bar_y"] + BAR_H + 14.0)))
+
+        if not alt_id:
+            continue
+
+        parts.append('<rect class="alt-frame" x="%s" y="%s" width="%s" '
+                     'height="%s" rx="4" ry="4"/>'
+                     % (fnum(alt_frame_x), fnum(block["alt_top"]),
+                        fnum(alt_frame_w),
+                        fnum(block["alt_bottom"] - block["alt_top"])))
+        parts.append('<line class="alt-divider" x1="%s" y1="%s" x2="%s" '
+                     'y2="%s"/>'
+                     % (fnum(alt_frame_x), fnum(block["divider_y"]),
+                        fnum(alt_frame_x + alt_frame_w),
+                        fnum(block["divider_y"])))
+        parts.append('<text class="label-alt" x="%s" y="%s">[%s]</text>'
+                     % (fnum(alt_frame_x + 6), fnum(block["header1_y"]),
+                        _esc(headers[0])))
+        parts.append('<text class="label-alt" x="%s" y="%s">[%s]</text>'
+                     % (fnum(alt_frame_x + 6), fnum(block["header2_y"]),
+                        _esc(headers[1])))
+        self_fail(block["branch1_y"], fail_label,
+                 alt_frame_x + alt_frame_w
+                 - (abgal_cx + 10.0 + SEQ_LOOP_W + 8) - 6.0)
+        if btype == "poll":
+            response(x2, block["branch2_y"], SEQ_RESPONSE_LABEL[sid])
+        else:
+            parts.append('<text class="label-note" x="%s" y="%s">alive'
+                         '</text>' % (fnum(abgal_cx + 10.0),
+                                     fnum(block["branch2_y"] + 4)))
+
     return "\n".join(parts)
 
 
@@ -1177,13 +1692,13 @@ def css_for(palette, flow_):
     lines.append("svg { background: var(--bg); }")
     lines.append("text { font-family: Helvetica, Arial, sans-serif; "
                  "fill: var(--fg); }")
-    lines.append(".label-actor { font-size: 9px; fill: var(--muted); "
+    lines.append(".label-actor { font-size: 10px; fill: var(--muted); "
                  "letter-spacing: .05em; text-transform: uppercase; }")
-    lines.append(".label-main { font-size: 11.5px; }")
-    lines.append(".label-duration { font-size: 10px; font-style: italic; "
+    lines.append(".label-main { font-size: 12.5px; }")
+    lines.append(".label-duration { font-size: 11px; font-style: italic; "
                  "fill: var(--muted); }")
-    lines.append(".label-edge { font-size: 10px; fill: var(--muted); }")
-    lines.append(".label-note { font-size: 10px; font-style: italic; "
+    lines.append(".label-edge { font-size: 11px; fill: var(--muted); }")
+    lines.append(".label-note { font-size: 11px; font-style: italic; "
                  "fill: var(--muted); }")
     lines.append(".box, .box-instant, .box-action { fill: var(--box-fill); "
                  "stroke: var(--box-stroke); stroke-width: 1.5; }")
@@ -1249,43 +1764,60 @@ def _swimlane_extra_css(flow_, channels, layout):
     return "\n".join(lines)
 
 
-def _circuit_extra_css(flow_, channels):
-    """A second, palette-independent `<style>` block, circuit's own.
-
-    Every dot shares one TARGET_LOOP_SECONDS animation-duration; what
-    tells them apart is animation-delay, each one's own cumulative offset
-    from _channel_timeline, so they light up in the loop in true sequence
-    order instead of each keeping its own, unrelated period. A flash's
-    keyframe is a brief spike confined to its own small window near the
-    start of that 8 s cycle; a pulse's fades in, holds for its own scaled
-    duration, then fades out, visibly longer and shaped differently, not
-    the same spike stretched.
-    """
-    timeline = _channel_timeline(flow_, channels)
+def _linear_extra_css():
+    """A second, palette-independent `<style>` block, create-flow's own
+    numbered badges. Kept apart from css_for so no other diagram carries
+    a badge class it has no circles for."""
     lines = ["<style>"]
-    lines.append(".wire-dot-flash, .wire-dot-pulse { fill: var(--accent); "
-                 "opacity: 0; }")
-    for entry in timeline:
-        name, delay = entry["id"], fnum(entry["offset"])
-        pct = entry["own"] / TARGET_LOOP_SECONDS * 100.0
-        if entry["sustained"]:
-            lines.append(
-                "@keyframes pulse-%s { 0%% { opacity: 0; } "
-                "%s%% { opacity: 1; } %s%% { opacity: 1; } "
-                "%s%% { opacity: 0; } 100%% { opacity: 0; } }"
-                % (name, fnum(pct * 0.2), fnum(pct * 0.8), fnum(pct)))
-            lines.append("#dot-%s { animation: pulse-%s %ss ease-in-out "
-                         "infinite; animation-delay: %ss; }"
-                         % (name, name, fnum(TARGET_LOOP_SECONDS), delay))
-        else:
-            lines.append(
-                "@keyframes flash-%s { 0%% { opacity: 0; } "
-                "%s%% { opacity: 1; } %s%% { opacity: 0; } "
-                "100%% { opacity: 0; } }"
-                % (name, fnum(pct * 0.3), fnum(pct)))
-            lines.append("#dot-%s { animation: flash-%s %ss linear "
-                         "infinite; animation-delay: %ss; }"
-                         % (name, name, fnum(TARGET_LOOP_SECONDS), delay))
+    lines.append(".linear-badge { fill: var(--accent); }")
+    lines.append(".linear-badge-text { font-size: 11px; font-weight: bold; "
+                 "fill: var(--bg); }")
+    lines.append("</style>")
+    return "\n".join(lines)
+
+
+def _sequence_extra_css(flow_, channels, layout):
+    """A second, palette-independent `<style>` block, sequence's own.
+
+    Solid, dotted and self-loop edges stay put; only a poll's request
+    line gets a moving ping, the same "this repeats for a while" stand-in
+    swimlane's own ping already established, scaled by the same shared
+    TARGET_LOOP_SECONDS budget every animated element in this file uses.
+    """
+    scale = _scale(flow_)
+    lane_x, lane_w = layout["lane_x"], layout["lane_w"]
+    abgal_cx = lane_x["abgal"] + lane_w["abgal"] / 2.0
+    lines = ["<style>"]
+    lines.append(".lane-rail { stroke: var(--box-stroke); stroke-width: 1; "
+                 "stroke-dasharray: 2 4; fill: none; }")
+    lines.append(".seq-edge-req { stroke: var(--arrow); stroke-width: 1.5; "
+                 "fill: none; }")
+    lines.append(".seq-edge-resp { stroke: var(--arrow); stroke-width: 1.5; "
+                 "stroke-dasharray: 5 3; fill: none; }")
+    lines.append(".seq-edge-poll { stroke: var(--arrow); stroke-width: 1.5; "
+                 "fill: none; }")
+    lines.append(".seq-edge-fail { stroke: var(--bad-stroke); "
+                 "stroke-width: 1.5; fill: none; }")
+    lines.append(".seq-rect-poll { fill: var(--decision-fill); "
+                 "stroke: none; }")
+    lines.append(".seq-rect-wait { fill: var(--bad-fill); stroke: none; }")
+    lines.append(".alt-frame { fill: none; stroke: var(--box-stroke); "
+                 "stroke-width: 1; stroke-dasharray: 4 3; }")
+    lines.append(".alt-divider { stroke: var(--box-stroke); "
+                 "stroke-width: 1; stroke-dasharray: 4 3; }")
+    lines.append(".label-alt { font-size: 9px; font-style: italic; "
+                 "fill: var(--muted); }")
+    lines.append(".ping { fill: var(--accent); }")
+    for s in flow_["steps"]:
+        target = channels.get(s["id"])
+        if not target or s["kind"] != "poll" or not s["seconds"]:
+            continue
+        x2 = lane_x[target] + lane_w[target] / 2.0
+        duration = fnum(max(s["seconds"] * scale, MIN_BAR_SECONDS))
+        lines.append("@keyframes seq-ping-%s { from { cx: %s; } "
+                     "to { cx: %s; } }" % (s["id"], fnum(abgal_cx), fnum(x2)))
+        lines.append("#seq-ping-%s { animation: seq-ping-%s %ss ease-in-out "
+                     "infinite alternate; }" % (s["id"], s["id"], duration))
     lines.append("</style>")
     return "\n".join(lines)
 
@@ -1317,14 +1849,14 @@ def _document(flow_, palette, body, layout, aria_label, extra_style=""):
 def outputs():
     """Every diagram this script writes, as (path, svg text) pairs.
 
-    All eight diagrams this file was built for: stop-ladder,
+    All nine diagrams this file was built for: stop-ladder,
     pieces-topology, create-flow, the FLOW_START trio (start-states,
-    start-swimlane, start-circuit), watch-states and ports-scale, each in
-    both palettes. A future diagram only needs its own FLOW_* constant
-    and two more yields here.
+    start-swimlane, start-sequence), watch-states, the README lifecycle
+    and ports-scale, each in both palettes. A future diagram only needs
+    its own FLOW_* constant and two more yields here.
     """
-    stop_layout = _layout(FLOW_STOP)
-    stop_body = draw_states(FLOW_STOP)
+    stop_layout = _layout_stairs(FLOW_STOP)
+    stop_body = draw_stairs(FLOW_STOP)
     for palette in ("light", "dark"):
         yield ("docs/img/stop-ladder-%s.svg" % palette,
               _document(FLOW_STOP, palette, stop_body, stop_layout,
@@ -1337,12 +1869,13 @@ def outputs():
               _document(FLOW_PIECES, palette, pieces_body, pieces_layout,
                         "The pieces of AbGal and how they relate"))
 
-    create_layout = _layout(FLOW_CREATE)
-    create_body = draw_states(FLOW_CREATE)
+    create_layout = _layout_linear(FLOW_CREATE)
+    create_body = draw_linear(FLOW_CREATE)
+    create_style = _linear_extra_css()
     for palette in ("light", "dark"):
         yield ("docs/img/create-flow-%s.svg" % palette,
               _document(FLOW_CREATE, palette, create_body, create_layout,
-                        "The nine steps of abgal create"))
+                        "The nine steps of abgal create", create_style))
 
     start_layout = _layout(FLOW_START)
     start_body = draw_states(FLOW_START)
@@ -1359,13 +1892,14 @@ def outputs():
               _document(FLOW_START, palette, swim_body, swim_layout,
                         "Swimlane view of abgal start", swim_style))
 
-    circuit_layout = _layout_circuit()
-    circuit_body = draw_circuit(FLOW_START, START_CHANNELS)
-    circuit_style = _circuit_extra_css(FLOW_START, START_CHANNELS)
+    seq_layout = _layout_sequence(FLOW_START)
+    seq_body = draw_sequence(FLOW_START, START_CHANNELS)
+    seq_style = _sequence_extra_css(FLOW_START, START_CHANNELS, seq_layout)
     for palette in ("light", "dark"):
-        yield ("docs/img/start-circuit-%s.svg" % palette,
-              _document(FLOW_START, palette, circuit_body, circuit_layout,
-                        "Wiring abgal start uses", circuit_style))
+        yield ("docs/img/start-sequence-%s.svg" % palette,
+              _document(FLOW_START, palette, seq_body, seq_layout,
+                        "Sequence diagram of abgal start",
+                        seq_style))
 
     watch_layout = _layout(FLOW_WATCH)
     watch_body = draw_states(FLOW_WATCH)
@@ -1373,6 +1907,14 @@ def outputs():
         yield ("docs/img/watch-states-%s.svg" % palette,
               _document(FLOW_WATCH, palette, watch_body, watch_layout,
                         "States abgal watch moves through"))
+
+    lifecycle_layout = _layout_lifecycle(FLOW_LIFECYCLE)
+    lifecycle_body = draw_lifecycle(FLOW_LIFECYCLE)
+    for palette in ("light", "dark"):
+        yield ("docs/img/lifecycle-%s.svg" % palette,
+              _document(FLOW_LIFECYCLE, palette, lifecycle_body,
+                        lifecycle_layout,
+                        "A guest's life, from template to deleted"))
 
     ports_layout = _layout_ports(FLOW_PORTS)
     ports_body = draw_ports(FLOW_PORTS)
