@@ -249,7 +249,9 @@ function report(t) { statusEl.textContent = t; }
 
 function pillState(g) {
   if (!g.pid) return "stopped";
-  return g.adb === "device" ? "running" : "booting";
+  if (g.adb === "device") return "running";
+  if (g.adb === "unauthorized") return "unknown";
+  return "booting";
 }
 
 function renderGuests(rows) {
@@ -420,7 +422,10 @@ class Handler(BaseHTTPRequestHandler):
             if p == "frame.png":
                 step = 2
                 if "s=" in self.path:
-                    step = max(1, min(6, int(self.path.split("s=")[1][0])))
+                    raw = self.path.split("s=")[1].split("&")[0]
+                    if not raw.isdigit():
+                        return self.respond(400, "text/plain; charset=utf-8", "bad s")
+                    step = max(1, min(6, int(raw)))
                 return self.respond(200, "image/png", self.server.device.screenshot(step))
             if p == "size":
                 w, h = self.server.device.size()
