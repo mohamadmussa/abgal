@@ -34,12 +34,6 @@ TARGET_LOOP_SECONDS = 8.0
 # uncompressed seconds; only the animation's own speed is floored.
 MIN_BAR_SECONDS = 0.4
 
-# start-timeline only: an instant/action step has no `seconds` of its
-# own, but still needs a slot on the shared timeline so its tick lands at
-# the real moment it happens, not just in the right order. Small and
-# fixed, not read from anywhere in abgal.
-FLASH_GAP_SECONDS = 0.2
-
 # watch-states only: a poll step whose real loop has no cap at all (the
 # main watch loop runs until stopped or aborted, unlike start's bounded
 # --timeout) gets `cap="loop"` instead of True/False. Its bar plays its
@@ -601,32 +595,103 @@ def _layout_swimlane(flow_):
             "header_y": header_y, "width": width, "height": height}
 
 
-# start-timeline only: the four satellites start-circuit used to wire,
-# minus abgal itself, since no channel entry ever targets abgal.
-TIMELINE_LANES = ("kernel", "emulator", "adb", "watch")
-TIMELINE_LABEL_W = 130.0
-TIMELINE_ROW_H = 50.0
-TIMELINE_ROW_GAP = 34.0
-TIMELINE_AXIS_W = 460.0
-TIMELINE_HEADER_H = 30.0
-TIMELINE_BAR_H = 20.0
-TIMELINE_TICK_R = 5.0
-TIMELINE_MIN_BAR_PX = 14.0
+# start-sequence: a literal sequence diagram, one block per real exchange
+# in main_order. A one-shot step (preflight, launch, start-watch) is a
+# plain request/response pair. A poll with a real decision after it
+# (poll-console, poll-boot) gets a shaded rect around its note, its
+# request, and a nested alt frame for the two branches. wait-settle sends
+# no message at all (abgal_start:wait_for_console sleeps, then reads its
+# own child process handle), so its rect holds only a note and a wait bar,
+# and the alt frame for its decision stays unshaded and narrow, both
+# branches self-referential. Swimlane's own lane_x/lane_w carries over
+# unchanged; only the row rhythm is new.
+SEQ_NOTE_GAP = 18.0
+SEQ_ROW_GAP = 22.0
+SEQ_RECT_PAD = 14.0
+SEQ_BLOCK_GAP = 26.0
+SEQ_BAR_ROW_H = 24.0
+SEQ_LOOP_W = 44.0
+# An alt frame's own inner rhythm: [header] text, a gap, up to two
+# wrapped lines of content, a gap before the next header. SEQ_CONTENT_H
+# is sized for the self-loop branch's real fail-* text (the longest
+# content either branch ever holds), so the divider never lands inside a
+# wrapped second line the way a tighter guess once did.
+SEQ_ALT_TOP_PAD = 16.0
+SEQ_ALT_BRANCH_GAP = 14.0
+SEQ_ALT_CONTENT_H = 28.0
+SEQ_ALT_BOTTOM_PAD = 16.0
 
 
-def _layout_timeline():
-    """One row per satellite actor, a shared time axis to the right of
-    the row labels. Fixed, like _layout_circuit was: the four rows are
-    always the same four, not read off any one flow.
+def _alt_geometry(top):
+    header1_y = top + SEQ_ALT_TOP_PAD
+    branch1_y = header1_y + SEQ_ALT_BRANCH_GAP
+    divider_y = branch1_y + SEQ_ALT_CONTENT_H
+    header2_y = divider_y + SEQ_ALT_TOP_PAD
+    branch2_y = header2_y + SEQ_ALT_BRANCH_GAP
+    bottom = branch2_y + SEQ_ALT_BOTTOM_PAD
+    return {"alt_top": top, "header1_y": header1_y, "branch1_y": branch1_y,
+            "divider_y": divider_y, "header2_y": header2_y,
+            "branch2_y": branch2_y, "alt_bottom": bottom}
+
+
+def _layout_sequence(flow_):
+    """One block per real exchange, walking main_order. A poll or wait
+    step immediately followed by a decision consumes that decision too,
+    folding its alt frame into the same block, since a decision step
+    never gets a row of its own, only ever the branch that follows the
+    exchange it judges. Every y an alt frame needs is computed once,
+    here, by _alt_geometry, so draw_sequence never re-derives a divider
+    or header position from a different formula than the one that
+    reserved the space for it.
     """
-    lane_y = {}
-    y = MARGIN + TIMELINE_HEADER_H
-    for lane in TIMELINE_LANES:
-        lane_y[lane] = y
-        y += TIMELINE_ROW_H + TIMELINE_ROW_GAP
-    height = y - TIMELINE_ROW_GAP + MARGIN
-    width = MARGIN + TIMELINE_LABEL_W + TIMELINE_AXIS_W + MARGIN
-    return {"lane_y": lane_y, "width": width, "height": height}
+    swim = _layout_swimlane(flow_)
+    main_order = _layout(flow_)["main_order"]
+    by_id = dict((s["id"], s) for s in flow_["steps"])
+
+    blocks = []
+    y = swim["header_y"] + SWIM_HEADER_H + 40.0
+    i = 0
+    while i < len(main_order):
+        sid = main_order[i]
+        s = by_id[sid]
+        nxt_id = main_order[i + 1] if i + 1 < len(main_order) else None
+        nxt = by_id[nxt_id] if nxt_id else None
+        alt_id = nxt_id if nxt is not None and nxt["kind"] == "decision" else None
+
+        if s["kind"] == "terminal":
+            block = {"type": "ready", "id": sid, "y": y}
+            y += BOX_H + 20.0
+        elif s["kind"] == "poll" and s["seconds"]:
+            note_y = y
+            req_y = note_y + SEQ_NOTE_GAP + 14.0
+            alt = _alt_geometry(req_y + SEQ_ROW_GAP)
+            block = dict(alt, type="poll", id=sid, alt_id=alt_id,
+                        rect_top=note_y - SEQ_RECT_PAD, note_y=note_y,
+                        req_y=req_y,
+                        rect_bottom=alt["alt_bottom"] + SEQ_RECT_PAD)
+            y = block["rect_bottom"] + SEQ_BLOCK_GAP
+        elif s["kind"] == "wait" and s["seconds"]:
+            note_y = y
+            bar_y = note_y + SEQ_NOTE_GAP + 10.0
+            rect_bottom = bar_y + SEQ_BAR_ROW_H + SEQ_RECT_PAD
+            alt = _alt_geometry(rect_bottom + 16.0)
+            block = dict(alt, type="wait", id=sid, alt_id=alt_id,
+                        rect_top=note_y - SEQ_RECT_PAD, note_y=note_y,
+                        bar_y=bar_y, rect_bottom=rect_bottom)
+            y = alt["alt_bottom"] + SEQ_BLOCK_GAP
+        else:
+            req_y = y
+            resp_y = req_y + 22.0
+            block = {"type": "pair", "id": sid, "req_y": req_y,
+                     "resp_y": resp_y}
+            y = resp_y + SEQ_BLOCK_GAP
+
+        blocks.append(block)
+        i += 2 if alt_id else 1
+
+    layout = dict(swim, blocks=blocks, height=y + MARGIN)
+    layout["width"] += 20.0
+    return layout
 
 
 # ports-scale only: a row of fixed slots above a row of illustrative
@@ -936,36 +1001,9 @@ def draw_swimlane(flow_, channels):
     return "\n".join(parts)
 
 
-def _channel_timeline(flow_, channels):
-    """Each channel-bearing step's cumulative start offset and own active
-    span, walked in the flow's real happy-path order (_layout's own main
-    column, the same order start-states already draws top to bottom) and
-    its already-scaled seconds. A step with no `seconds` of its own
-    (instant/action/decision/terminal) counts as one FLASH_GAP_SECONDS,
-    just enough to keep the true order without inventing a duration abgal
-    itself does not have for that step.
-    """
-    scale = _scale(flow_)
-    main_order = _layout(flow_)["main_order"]
-    by_id = dict((s["id"], s) for s in flow_["steps"])
-    offset = 0.0
-    timeline = []
-    for sid in main_order:
-        s = by_id[sid]
-        sustained = s["kind"] in ("poll", "wait") and s["seconds"]
-        own = max(s["seconds"] * scale, MIN_BAR_SECONDS) if sustained \
-            else FLASH_GAP_SECONDS
-        if sid in channels:
-            timeline.append({"id": sid, "target": channels[sid],
-                             "offset": offset, "own": own,
-                             "sustained": bool(sustained)})
-        offset += own
-    return timeline
-
-
 def _duration_caption(s):
     """The real-seconds text a poll or wait step carries, factored out of
-    _box_markup so draw_timeline's bars can show the same words.
+    _box_markup so draw_sequence's self-loops can show the same words.
     """
     if s["seconds"] is None:
         return None
@@ -976,50 +1014,212 @@ def _duration_caption(s):
     return "%d s" % s["seconds"]
 
 
-def draw_timeline(flow_, channels):
-    """The body markup of a timeline diagram: one row per satellite
-    actor, a bar to scale for every real wait, a tick for every instant
-    step. Reuses _channel_timeline's offsets, the same ones a wire-pulse
-    diagram would use, so a bar's position always means the same real
-    moment it would mean anywhere else in this file.
-    """
-    layout = _layout_timeline()
-    lane_y = layout["lane_y"]
-    by_id = dict((s["id"], s) for s in flow_["steps"])
-    x0 = MARGIN + TIMELINE_LABEL_W
-    px_per_s = TIMELINE_AXIS_W / TARGET_LOOP_SECONDS
-    parts = [DEFS_MARKUP]
-    parts.append('<text class="label-note" x="%s" y="%s">bar: a real wait, '
-                 'to scale. tick: an instant step.</text>'
-                 % (fnum(MARGIN), fnum(MARGIN + 14)))
-    for lane in TIMELINE_LANES:
-        y = lane_y[lane]
-        parts.append('<text class="label-main" x="%s" y="%s">%s</text>'
-                     % (fnum(MARGIN), fnum(y + TIMELINE_ROW_H / 2.0 + 4),
-                        _esc(LANE_LABELS[lane])))
-        parts.append('<rect class="bar-track" x="%s" y="%s" width="%s" '
-                     'height="%s" rx="4" ry="4"/>'
-                     % (fnum(x0), fnum(y + (TIMELINE_ROW_H - BAR_H) / 2.0),
-                        fnum(TIMELINE_AXIS_W), fnum(BAR_H)))
+# The message text on each request/response arrow: real vocabulary from
+# FLOW_START's own step labels and abgal_start:773-952, condensed to what
+# fits on one line the way a real sequenceDiagram's message text does.
+SEQ_REQUEST_LABEL = {
+    "preflight": "preflight, refuse a running guest or too little memory",
+    "launch": "launch, detached, logs to emulator.log",
+    "poll-console": "who is this, every 2 s",
+    "start-watch": "start abgal watch as a subprocess",
+    "poll-boot": "boot_completed, every 3 s",
+}
+SEQ_RESPONSE_LABEL = {
+    "preflight": "ok", "launch": "launched", "poll-console": "answered",
+    "start-watch": "started", "poll-boot": "booted",
+}
+SEQ_POLL_NOTE = {
+    "poll-console": "poll console, up to 300 s",
+    "poll-boot": "poll boot, up to 300 s",
+}
+SEQ_WAIT_NOTE = {
+    "wait-settle": "wait settle, fixed 2 s, then abgal checks its own "
+                   "child process",
+}
+# The alt frame's two condition headers, the only wording in this engine
+# with no FIELDS column of its own to read from; the "no" branch's own
+# message still comes straight from the matching fail-* step's real
+# label, never invented here.
+SEQ_ALT_HEADERS = {
+    "decision-console": ("no answer in time", "console answered"),
+    "decision-watch": ("watch died at once", "watch still alive"),
+    "decision-boot": ("not booted in time", "booted in time"),
+}
 
-    for entry in _channel_timeline(flow_, channels):
-        lane, s = entry["target"], by_id[entry["id"]]
-        y, bar_x = lane_y[lane], x0 + entry["offset"] * px_per_s
-        if entry["sustained"]:
-            bar_y = y + (TIMELINE_ROW_H - TIMELINE_BAR_H) / 2.0
-            parts.append('<rect id="tl-bar-%s" class="bar-fill" x="%s" '
-                         'y="%s" width="0" height="%s" rx="4" ry="4"/>'
-                         % (entry["id"], fnum(bar_x), fnum(bar_y),
-                            fnum(TIMELINE_BAR_H)))
-            parts.append('<text class="label-duration" x="%s" y="%s">%s'
-                         '</text>' % (fnum(bar_x), fnum(bar_y - 6),
-                                     _esc(_duration_caption(s))))
+
+def _seq_fail_id(flow_, decision_id):
+    for e in flow_["edges"]:
+        if e["from_id"] == decision_id and e["label"] == "no":
+            return e["to_id"]
+    return None
+
+
+def draw_sequence(flow_, channels):
+    """The body markup of a literal sequence diagram: a lifeline per
+    actor, solid request and dotted response arrows with real message
+    text, a shaded rect around a poll's note and its alt branches, an
+    unshaded, narrow alt alone for wait-settle's decision since that step
+    itself sends no message for a rect to hold.
+    """
+    layout = _layout_sequence(flow_)
+    lane_x, lane_w = layout["lane_x"], layout["lane_w"]
+    by_id = dict((s["id"], s) for s in flow_["steps"])
+    parts = [DEFS_MARKUP]
+
+    for lane in LANE_ORDER:
+        header = step("lane-header-%s" % lane, None, LANE_LABELS[lane],
+                      "instant")
+        parts.append(_box_markup({"x": lane_x[lane], "y": layout["header_y"],
+                                  "w": lane_w[lane], "h": SWIM_HEADER_H,
+                                  "step": header}))
+
+    rail_top = layout["header_y"] + SWIM_HEADER_H
+    rail_bottom = layout["height"] - MARGIN
+    for lane in LANE_ORDER:
+        cx = lane_x[lane] + lane_w[lane] / 2.0
+        parts.append('<line class="lane-rail" x1="%s" y1="%s" x2="%s" y2="%s"/>'
+                     % (fnum(cx), fnum(rail_top), fnum(cx), fnum(rail_bottom)))
+
+    abgal_cx = lane_x["abgal"] + lane_w["abgal"] / 2.0
+    # Every alt frame shares one width, wide enough for the poll blocks'
+    # real message to adb, so the wait-settle decision's frame (no other
+    # participant involved) is not left too narrow for its own longest
+    # fail-* text to wrap into, the bug an earlier, narrower guess had.
+    adb_right = lane_x["adb"] + lane_w["adb"]
+    alt_frame_x = abgal_cx - BOX_W / 2.0 - 6.0
+    alt_frame_w = adb_right - alt_frame_x + 16.0
+    number = [0]
+
+    def request(x2, y, cls, label):
+        number[0] += 1
+        parts.append('<line class="%s" x1="%s" y1="%s" x2="%s" y2="%s" '
+                     'marker-end="url(#arrow)"/>'
+                     % (cls, fnum(abgal_cx), fnum(y), fnum(x2), fnum(y)))
+        parts.append('<text class="label-edge" x="%s" y="%s" '
+                     'text-anchor="middle">%d. %s</text>'
+                     % (fnum((abgal_cx + x2) / 2.0), fnum(y - 6), number[0],
+                        _esc(label)))
+
+    def response(x2, y, label):
+        number[0] += 1
+        parts.append('<line class="seq-edge-resp" x1="%s" y1="%s" x2="%s" '
+                     'y2="%s" marker-end="url(#arrow)"/>'
+                     % (fnum(x2), fnum(y), fnum(abgal_cx), fnum(y)))
+        parts.append('<text class="label-edge" x="%s" y="%s" '
+                     'text-anchor="middle">%d. %s</text>'
+                     % (fnum((abgal_cx + x2) / 2.0), fnum(y - 6), number[0],
+                        _esc(label)))
+
+    def self_fail(y, label, max_w):
+        number[0] += 1
+        x = abgal_cx + 10.0
+        loop = ('M %s %s C %s %s, %s %s, %s %s'
+               % (fnum(x), fnum(y), fnum(x + SEQ_LOOP_W), fnum(y),
+                  fnum(x + SEQ_LOOP_W), fnum(y + 16), fnum(x), fnum(y + 16)))
+        parts.append('<path class="seq-edge-fail" d="%s" '
+                     'marker-end="url(#arrow)"/>' % loop)
+        text_x = x + SEQ_LOOP_W + 8
+        for i, line in enumerate(_wrap(label, max_w)[:2]):
+            parts.append('<text class="label-edge" x="%s" y="%s">%s</text>'
+                         % (fnum(text_x), fnum(y + 4 + i * 12),
+                            ("%d. %s" % (number[0], _esc(line))) if i == 0
+                            else _esc(line)))
+
+    for block in layout["blocks"]:
+        sid = block["id"]
+        s = by_id[sid]
+        btype = block["type"]
+
+        if btype == "ready":
+            ready_w = layout["width"] - 2 * MARGIN - 20.0
+            parts.append(_box_markup({"x": MARGIN, "y": block["y"],
+                                      "w": ready_w, "h": BOX_H, "step": s}))
+            continue
+
+        if btype == "pair":
+            target = channels[sid]
+            x2 = lane_x[target] + lane_w[target] / 2.0
+            request(x2, block["req_y"], "seq-edge-req", SEQ_REQUEST_LABEL[sid])
+            response(x2, block["resp_y"],
+                    "%s (instant)" % SEQ_RESPONSE_LABEL[sid])
+            continue
+
+        alt_id = block.get("alt_id")
+        headers = SEQ_ALT_HEADERS.get(alt_id, ("", ""))
+        fail_id = _seq_fail_id(flow_, alt_id) if alt_id else None
+        fail_label = by_id[fail_id]["label"] if fail_id else ""
+
+        if btype == "poll":
+            target = channels[sid]
+            x2 = lane_x[target] + lane_w[target] / 2.0
+            rect_x, rect_w = alt_frame_x, alt_frame_w
+            parts.append('<rect class="seq-rect-poll" x="%s" y="%s" '
+                         'width="%s" height="%s" rx="6" ry="6"/>'
+                         % (fnum(rect_x), fnum(block["rect_top"]),
+                            fnum(rect_w),
+                            fnum(block["rect_bottom"] - block["rect_top"])))
+            parts.append('<text class="label-note" x="%s" y="%s">%s</text>'
+                         % (fnum(rect_x + 8), fnum(block["note_y"]),
+                            _esc(SEQ_POLL_NOTE[sid])))
+            request(x2, block["req_y"], "seq-edge-poll", SEQ_REQUEST_LABEL[sid])
+            parts.append('<circle id="seq-ping-%s" class="ping" cx="%s" '
+                         'cy="%s" r="3.5"/>'
+                         % (sid, fnum(abgal_cx), fnum(block["req_y"])))
         else:
-            parts.append('<circle id="tl-tick-%s" class="tl-tick" cx="%s" '
-                         'cy="%s" r="%s"/>'
-                         % (entry["id"], fnum(bar_x),
-                            fnum(y + TIMELINE_ROW_H / 2.0),
-                            fnum(TIMELINE_TICK_R)))
+            rect_x = abgal_cx - BOX_W / 2.0
+            rect_w = BOX_W
+            parts.append('<rect class="seq-rect-wait" x="%s" y="%s" '
+                         'width="%s" height="%s" rx="6" ry="6"/>'
+                         % (fnum(rect_x), fnum(block["rect_top"]),
+                            fnum(rect_w),
+                            fnum(block["rect_bottom"] - block["rect_top"])))
+            for i, line in enumerate(_wrap(SEQ_WAIT_NOTE[sid], rect_w - 16)):
+                parts.append('<text class="label-note" x="%s" y="%s">%s'
+                             '</text>' % (fnum(rect_x + 8),
+                                         fnum(block["note_y"] + i * 12),
+                                         _esc(line)))
+            bar_x = abgal_cx - BAR_W / 2.0
+            parts.append('<rect class="bar-track" x="%s" y="%s" width="%s" '
+                         'height="%s" rx="3" ry="3"/>'
+                         % (fnum(bar_x), fnum(block["bar_y"]), fnum(BAR_W),
+                            fnum(BAR_H)))
+            parts.append('<rect id="bar-fill-%s" class="bar-fill" x="%s" '
+                         'y="%s" width="0" height="%s" rx="3" ry="3"/>'
+                         % (sid, fnum(bar_x), fnum(block["bar_y"]),
+                            fnum(BAR_H)))
+            parts.append('<text class="label-duration" x="%s" y="%s" '
+                         'text-anchor="middle">2 s</text>'
+                         % (fnum(abgal_cx), fnum(block["bar_y"] + BAR_H + 14.0)))
+
+        if not alt_id:
+            continue
+
+        parts.append('<rect class="alt-frame" x="%s" y="%s" width="%s" '
+                     'height="%s" rx="4" ry="4"/>'
+                     % (fnum(alt_frame_x), fnum(block["alt_top"]),
+                        fnum(alt_frame_w),
+                        fnum(block["alt_bottom"] - block["alt_top"])))
+        parts.append('<line class="alt-divider" x1="%s" y1="%s" x2="%s" '
+                     'y2="%s"/>'
+                     % (fnum(alt_frame_x), fnum(block["divider_y"]),
+                        fnum(alt_frame_x + alt_frame_w),
+                        fnum(block["divider_y"])))
+        parts.append('<text class="label-alt" x="%s" y="%s">[%s]</text>'
+                     % (fnum(alt_frame_x + 6), fnum(block["header1_y"]),
+                        _esc(headers[0])))
+        parts.append('<text class="label-alt" x="%s" y="%s">[%s]</text>'
+                     % (fnum(alt_frame_x + 6), fnum(block["header2_y"]),
+                        _esc(headers[1])))
+        self_fail(block["branch1_y"], fail_label,
+                 alt_frame_x + alt_frame_w
+                 - (abgal_cx + 10.0 + SEQ_LOOP_W + 8) - 6.0)
+        if btype == "poll":
+            response(x2, block["branch2_y"], SEQ_RESPONSE_LABEL[sid])
+        else:
+            parts.append('<text class="label-note" x="%s" y="%s">alive'
+                         '</text>' % (fnum(abgal_cx + 10.0),
+                                     fnum(block["branch2_y"] + 4)))
+
     return "\n".join(parts)
 
 
@@ -1216,39 +1416,48 @@ def _swimlane_extra_css(flow_, channels, layout):
     return "\n".join(lines)
 
 
-def _timeline_extra_css(flow_, channels):
-    """A second, palette-independent `<style>` block, timeline's own.
+def _sequence_extra_css(flow_, channels, layout):
+    """A second, palette-independent `<style>` block, sequence's own.
 
-    A bar grows from 0 to its real scaled width at its real offset, holds,
-    then resets before the loop repeats. A tick just flashes, the same
-    keyframe shape start-states already uses for an instant step.
+    Solid, dotted and self-loop edges stay put; only a poll's request
+    line gets a moving ping, the same "this repeats for a while" stand-in
+    swimlane's own ping already established, scaled by the same shared
+    TARGET_LOOP_SECONDS budget every animated element in this file uses.
     """
-    px_per_s = TIMELINE_AXIS_W / TARGET_LOOP_SECONDS
+    scale = _scale(flow_)
+    lane_x, lane_w = layout["lane_x"], layout["lane_w"]
+    abgal_cx = lane_x["abgal"] + lane_w["abgal"] / 2.0
     lines = ["<style>"]
-    lines.append(".tl-tick { fill: var(--accent); opacity: 0; }")
-    for entry in _channel_timeline(flow_, channels):
-        name, delay = entry["id"], fnum(entry["offset"])
-        pct = entry["own"] / TARGET_LOOP_SECONDS * 100.0
-        if entry["sustained"]:
-            w = fnum(max(entry["own"] * px_per_s, TIMELINE_MIN_BAR_PX))
-            lines.append(
-                "@keyframes grow-%s { 0%% { width: 0; } "
-                "%s%% { width: %spx; } %s%% { width: %spx; } "
-                "%s%% { width: 0; } 100%% { width: 0; } }"
-                % (name, fnum(pct * 0.05), w, fnum(pct * 0.95), w,
-                   fnum(pct)))
-            lines.append("#tl-bar-%s { animation: grow-%s %ss ease-out "
-                         "infinite; animation-delay: %ss; }"
-                         % (name, name, fnum(TARGET_LOOP_SECONDS), delay))
-        else:
-            lines.append(
-                "@keyframes flash-tl-%s { 0%% { opacity: 0; } "
-                "%s%% { opacity: 1; } %s%% { opacity: 0; } "
-                "100%% { opacity: 0; } }"
-                % (name, fnum(pct * 0.3), fnum(pct)))
-            lines.append("#tl-tick-%s { animation: flash-tl-%s %ss linear "
-                         "infinite; animation-delay: %ss; }"
-                         % (name, name, fnum(TARGET_LOOP_SECONDS), delay))
+    lines.append(".lane-rail { stroke: var(--box-stroke); stroke-width: 1; "
+                 "stroke-dasharray: 2 4; fill: none; }")
+    lines.append(".seq-edge-req { stroke: var(--arrow); stroke-width: 1.5; "
+                 "fill: none; }")
+    lines.append(".seq-edge-resp { stroke: var(--arrow); stroke-width: 1.5; "
+                 "stroke-dasharray: 5 3; fill: none; }")
+    lines.append(".seq-edge-poll { stroke: var(--arrow); stroke-width: 1.5; "
+                 "fill: none; }")
+    lines.append(".seq-edge-fail { stroke: var(--bad-stroke); "
+                 "stroke-width: 1.5; fill: none; }")
+    lines.append(".seq-rect-poll { fill: var(--decision-fill); "
+                 "stroke: none; }")
+    lines.append(".seq-rect-wait { fill: var(--bad-fill); stroke: none; }")
+    lines.append(".alt-frame { fill: none; stroke: var(--box-stroke); "
+                 "stroke-width: 1; stroke-dasharray: 4 3; }")
+    lines.append(".alt-divider { stroke: var(--box-stroke); "
+                 "stroke-width: 1; stroke-dasharray: 4 3; }")
+    lines.append(".label-alt { font-size: 9px; font-style: italic; "
+                 "fill: var(--muted); }")
+    lines.append(".ping { fill: var(--accent); }")
+    for s in flow_["steps"]:
+        target = channels.get(s["id"])
+        if not target or s["kind"] != "poll" or not s["seconds"]:
+            continue
+        x2 = lane_x[target] + lane_w[target] / 2.0
+        duration = fnum(max(s["seconds"] * scale, MIN_BAR_SECONDS))
+        lines.append("@keyframes seq-ping-%s { from { cx: %s; } "
+                     "to { cx: %s; } }" % (s["id"], fnum(abgal_cx), fnum(x2)))
+        lines.append("#seq-ping-%s { animation: seq-ping-%s %ss ease-in-out "
+                     "infinite alternate; }" % (s["id"], s["id"], duration))
     lines.append("</style>")
     return "\n".join(lines)
 
@@ -1282,7 +1491,7 @@ def outputs():
 
     All eight diagrams this file was built for: stop-ladder,
     pieces-topology, create-flow, the FLOW_START trio (start-states,
-    start-swimlane, start-timeline), watch-states and ports-scale, each in
+    start-swimlane, start-sequence), watch-states and ports-scale, each in
     both palettes. A future diagram only needs its own FLOW_* constant
     and two more yields here.
     """
@@ -1322,14 +1531,14 @@ def outputs():
               _document(FLOW_START, palette, swim_body, swim_layout,
                         "Swimlane view of abgal start", swim_style))
 
-    timeline_layout = _layout_timeline()
-    timeline_body = draw_timeline(FLOW_START, START_CHANNELS)
-    timeline_style = _timeline_extra_css(FLOW_START, START_CHANNELS)
+    seq_layout = _layout_sequence(FLOW_START)
+    seq_body = draw_sequence(FLOW_START, START_CHANNELS)
+    seq_style = _sequence_extra_css(FLOW_START, START_CHANNELS, seq_layout)
     for palette in ("light", "dark"):
-        yield ("docs/img/start-timeline-%s.svg" % palette,
-              _document(FLOW_START, palette, timeline_body, timeline_layout,
-                        "Timeline of the real waits abgal start goes through",
-                        timeline_style))
+        yield ("docs/img/start-sequence-%s.svg" % palette,
+              _document(FLOW_START, palette, seq_body, seq_layout,
+                        "Sequence diagram of abgal start",
+                        seq_style))
 
     watch_layout = _layout(FLOW_WATCH)
     watch_body = draw_states(FLOW_WATCH)
