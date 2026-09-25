@@ -25,6 +25,7 @@ nothing to package: the file is the program.
 import argparse
 import grp
 import hashlib
+import json
 import os
 import platform
 import pwd
@@ -300,6 +301,42 @@ def running_pid(name):
         if name in args:
             return pid
     return None
+
+
+def process_stats(pid):
+    """RSS in MB and CPU percent for one running process, or None.
+
+    cpu_percent is the process's whole CPU time divided by its wall clock
+    age, the average since it started, the same figure "ps -o %cpu" shows
+    by default. A true instantaneous value needs two /proc reads a fixed
+    interval apart, either blocking this call or a background sampling
+    thread, more than a status readout is worth.
+    """
+    try:
+        status = Path("/proc/%d/status" % pid).read_text()
+        stat = Path("/proc/%d/stat" % pid).read_text()
+        uptime = float(Path("/proc/uptime").read_text().split()[0])
+
+        mem_kb = 0
+        for line in status.splitlines():
+            if line.startswith("VmRSS:"):
+                mem_kb = int(line.split()[1])
+                break
+
+        # Field 2, the command in parentheses, can itself contain spaces or
+        # parentheses, so the split resumes after its closing ")" rather
+        # than trusting a fixed field count.
+        fields = stat[stat.rfind(")") + 2:].split()
+        utime, stime, starttime = int(fields[11]), int(fields[12]), int(fields[19])
+    except (OSError, ValueError, IndexError):
+        return None
+
+    clk_tck = os.sysconf("SC_CLK_TCK")
+    age = uptime - starttime / clk_tck
+    if age <= 0:
+        return {"mem_mb": mem_kb // 1024, "cpu_percent": 0.0}
+    cpu_percent = 100 * (utime + stime) / clk_tck / age
+    return {"mem_mb": mem_kb // 1024, "cpu_percent": round(cpu_percent, 1)}
 
 
 # ----------------------------------------------------------------------- adb
@@ -1119,7 +1156,7 @@ def cmd_status(args):
     if args.name:
         wanted = resolve(args.name)
         rows = [r for r in rows if r[0] == wanted]
-    if not rows:
+    if not rows and not args.json:
         print("No guests on disk. Create one with: abgal create <template>")
         return 0
 
@@ -1137,6 +1174,22 @@ def cmd_status(args):
             by_name[found] = (serial, state)
 
     free = available_mb()
+
+    if args.json:
+        guest_rows = []
+        for name, template, number in rows:
+            pid = running_pid(name)
+            serial, state = by_name.get(name, (None, None))
+            if pid is not None and serial is None:
+                state = "not visible"
+            guest_rows.append({
+                "name": name, "id": number, "template": template,
+                "pid": pid, "serial": serial, "adb": state,
+                "stats": process_stats(pid) if pid is not None else None,
+            })
+        print(json.dumps({"free_mb": free, "guests": guest_rows}))
+        return 0
+
     layout = "%-22s %-9s %-11s %-14s %-12s %s"
     print(layout % ("GUEST", "ID", "STATE", "SERIAL", "ADB", "TEMPLATE"))
     for name, template, number in rows:
@@ -1676,6 +1729,8 @@ def build_parser():
     status = subs.add_parser("status", help="what is on disk and what is running")
     status.add_argument("-n", "--name", metavar="GUEST",
                         help="only this guest, by name or by id")
+    status.add_argument("--json", action="store_true",
+                        help="machine readable, with per guest memory and CPU")
     status.set_defaults(run=cmd_status)
 
     watch = subs.add_parser("watch", help="stop guests before the processor runs too hot")
