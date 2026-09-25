@@ -39,18 +39,17 @@ Jeder Befehl bewegt ein AVD zwischen derselben kleinen Menge von Zuständen,
 von einer Zeile in `devices.conf` über
 `create`, `start`, laufend, und wieder zurück zu gestoppt, entweder durch
 `abgal stop` oder durch die Temperaturüberwachung bei 96 C. README.md
-zeichnet das schon als Zustandsdiagramm, siehe
+zeichnet das schon als animiertes Zustandsdiagramm, siehe
 [Lebenszyklus](../README.md#lifecycle), deshalb wird es hier nicht wiederholt.
-`docs/README.md` trägt eine zweite, leicht abweichende Kopie desselben
-Diagramms, der die Speicherverweigerung und die genaue Temperatur fehlen.
-Das ist eine kleine, bereits bestehende Unstimmigkeit zwischen zwei
-Dateien, hier so belassen statt als Nebeneffekt dieser Seite behoben.
+`docs/README.md` verweist auf dasselbe Bild, statt eine eigene Kopie zu
+pflegen, damit es nur noch ein Diagramm gibt, das mit den echten Zuständen
+Schritt halten muss.
 
 ## Ein AVD erstellen
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/create-flow-dark.svg">
-  <img src="img/create-flow-light.svg" alt="Nine steps in a column for abgal create: refuse an invalid name; check the screen is listed by avdmanager; fetch the system image if missing; refuse a running guest; delete and recreate, or keep the disk; create avd/ and call avdmanager create avd; write abgal-template; pin five values in config.ini, a sixth for the store template; read config.ini back and compare thirteen values against what was asked for.">
+  <img src="img/create-flow-light.svg" alt="Nine numbered steps in a checklist, three rows of three read left to right then wrapped, for abgal create: refuse an invalid name; check the screen is listed by avdmanager; fetch the system image if missing; refuse a running guest; delete and recreate, or keep the disk; create avd/ and call avdmanager create avd; write abgal-template; pin five values in config.ini, a sixth for the store template; read config.ini back and compare thirteen values against what was asked for.">
 </picture>
 
 `abgal create` durchläuft neun Schritte für jedes AVD und endet damit, dass

@@ -12,18 +12,10 @@ image.
 
 ## Lifecycle
 
-```mermaid
-stateDiagram-v2
-    [*] --> template: a line in devices.conf
-    template --> stopped: abgal create
-    stopped --> stopped: abgal start, not enough memory
-    stopped --> booting: abgal start
-    booting --> running: boot completed
-    booting --> stopped: did not come up
-    running --> stopped: abgal stop
-    running --> stopped: temperature watch, 96 C
-    stopped --> [*]: abgal delete
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/lifecycle-dark.svg">
+  <img src="docs/img/lifecycle-light.svg" alt="A guest's life from template to deleted. template becomes stopped through abgal create. stopped becomes booting through abgal start, with a note that abgal start refuses and leaves it stopped when memory is too low. booting becomes running once boot completes, or falls back to stopped if the guest did not come up. running returns to stopped through abgal stop or the temperature watch at 96 C. stopped becomes deleted through abgal delete.">
+</picture>
 
 `abgal start` refuses a guest before booting it when the free memory would
 drop below what the machine keeps for itself. A guest keeps growing for minutes after it has
