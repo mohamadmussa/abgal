@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 580.00 896.00" width="580.00" height="896.00" role="img" aria-label="The nine steps of abgal create">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960.00 404.00" width="960.00" height="404.00" role="img" aria-label="The nine steps of abgal create">
 <style>
 :root {
   --bg: #1b1b1f;
@@ -18,11 +18,11 @@
 }
 svg { background: var(--bg); }
 text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
-.label-actor { font-size: 9px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
-.label-main { font-size: 11.5px; }
-.label-duration { font-size: 10px; font-style: italic; fill: var(--muted); }
-.label-edge { font-size: 10px; fill: var(--muted); }
-.label-note { font-size: 10px; font-style: italic; fill: var(--muted); }
+.label-actor { font-size: 10px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.label-main { font-size: 12.5px; }
+.label-duration { font-size: 11px; font-style: italic; fill: var(--muted); }
+.label-edge { font-size: 11px; fill: var(--muted); }
+.label-note { font-size: 11px; font-style: italic; fill: var(--muted); }
 .box, .box-instant, .box-action { fill: var(--box-fill); stroke: var(--box-stroke); stroke-width: 1.5; }
 .box-decision { fill: var(--decision-fill); stroke: var(--box-stroke); stroke-width: 1.5; stroke-dasharray: 4 3; }
 .box-ok { fill: var(--ok-fill); stroke: var(--ok-stroke); stroke-width: 2; }
@@ -32,6 +32,10 @@ text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
 .edge { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
 .arrowhead { fill: var(--arrow); }
 @keyframes bar-fill { from { width: 0; } to { width: 220.00px; } }
+</style>
+<style>
+.linear-badge { fill: var(--accent); }
+.linear-badge-text { font-size: 11px; font-weight: bold; fill: var(--bg); }
 </style>
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -44,60 +48,78 @@ text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
 <text class="label-main" x="160.00" y="58.00" text-anchor="middle">refuses a name outside letters,</text>
 <text class="label-main" x="160.00" y="70.00" text-anchor="middle">digits, dot, underscore, dash</text>
 </g>
+<circle class="linear-badge" cx="30.00" cy="30.00" r="11.00"/>
+<text class="linear-badge-text" x="30.00" y="34.00" text-anchor="middle">1</text>
 <g id="step-check-screen">
-<rect class="box box-action" x="30.00" y="126.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
-<text class="label-actor" x="160.00" y="140.00" text-anchor="middle">abgal</text>
-<text class="label-main" x="160.00" y="154.00" text-anchor="middle">checks the screen is listed by</text>
-<text class="label-main" x="160.00" y="166.00" text-anchor="middle">avdmanager list device</text>
+<rect class="box box-action" x="350.00" y="30.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="480.00" y="44.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="480.00" y="58.00" text-anchor="middle">checks the screen is listed by</text>
+<text class="label-main" x="480.00" y="70.00" text-anchor="middle">avdmanager list device</text>
 </g>
+<circle class="linear-badge" cx="350.00" cy="30.00" r="11.00"/>
+<text class="linear-badge-text" x="350.00" y="34.00" text-anchor="middle">2</text>
 <g id="step-fetch-image">
-<rect class="box box-action" x="30.00" y="222.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
-<text class="label-actor" x="160.00" y="236.00" text-anchor="middle">abgal</text>
-<text class="label-main" x="160.00" y="250.00" text-anchor="middle">fetches the system image, unless</text>
-<text class="label-main" x="160.00" y="262.00" text-anchor="middle">sdk/system-images/ has it</text>
+<rect class="box box-action" x="670.00" y="30.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="800.00" y="44.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="800.00" y="58.00" text-anchor="middle">fetches the system image, unless</text>
+<text class="label-main" x="800.00" y="70.00" text-anchor="middle">sdk/system-images/ has it</text>
 </g>
+<circle class="linear-badge" cx="670.00" cy="30.00" r="11.00"/>
+<text class="linear-badge-text" x="670.00" y="34.00" text-anchor="middle">3</text>
 <g id="step-refuse-running">
-<rect class="box box-action" x="30.00" y="318.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
-<text class="label-actor" x="160.00" y="332.00" text-anchor="middle">abgal</text>
-<text class="label-main" x="160.00" y="346.00" text-anchor="middle">refuses a running guest, since a</text>
-<text class="label-main" x="160.00" y="358.00" text-anchor="middle">start rewrites config.ini</text>
+<rect class="box box-action" x="670.00" y="168.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="800.00" y="182.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="800.00" y="196.00" text-anchor="middle">refuses a running guest, since a</text>
+<text class="label-main" x="800.00" y="208.00" text-anchor="middle">start rewrites config.ini</text>
 </g>
+<circle class="linear-badge" cx="670.00" cy="168.00" r="11.00"/>
+<text class="linear-badge-text" x="670.00" y="172.00" text-anchor="middle">4</text>
 <g id="step-recreate-or-keep">
-<rect class="box box-action" x="30.00" y="414.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
-<text class="label-actor" x="160.00" y="428.00" text-anchor="middle">abgal</text>
-<text class="label-main" x="160.00" y="442.00" text-anchor="middle">with --recreate, deletes the guest</text>
-<text class="label-main" x="160.00" y="454.00" text-anchor="middle">first. Otherwise keeps its disk</text>
+<rect class="box box-action" x="350.00" y="168.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="480.00" y="182.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="480.00" y="196.00" text-anchor="middle">with --recreate, deletes the guest</text>
+<text class="label-main" x="480.00" y="208.00" text-anchor="middle">first. Otherwise keeps its disk</text>
 </g>
+<circle class="linear-badge" cx="350.00" cy="168.00" r="11.00"/>
+<text class="linear-badge-text" x="350.00" y="172.00" text-anchor="middle">5</text>
 <g id="step-create-avd">
-<rect class="box box-action" x="30.00" y="510.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
-<text class="label-actor" x="160.00" y="524.00" text-anchor="middle">abgal</text>
-<text class="label-main" x="160.00" y="538.00" text-anchor="middle">creates avd/, calls avdmanager</text>
-<text class="label-main" x="160.00" y="550.00" text-anchor="middle">create avd</text>
+<rect class="box box-action" x="30.00" y="168.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="182.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="196.00" text-anchor="middle">creates avd/, calls avdmanager</text>
+<text class="label-main" x="160.00" y="208.00" text-anchor="middle">create avd</text>
 </g>
+<circle class="linear-badge" cx="30.00" cy="168.00" r="11.00"/>
+<text class="linear-badge-text" x="30.00" y="172.00" text-anchor="middle">6</text>
 <g id="step-write-template">
-<rect class="box box-action" x="30.00" y="606.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
-<text class="label-actor" x="160.00" y="620.00" text-anchor="middle">abgal</text>
-<text class="label-main" x="160.00" y="634.00" text-anchor="middle">writes abgal-template next to</text>
-<text class="label-main" x="160.00" y="646.00" text-anchor="middle">config.ini</text>
+<rect class="box box-action" x="30.00" y="306.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="160.00" y="320.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="160.00" y="334.00" text-anchor="middle">writes abgal-template next to</text>
+<text class="label-main" x="160.00" y="346.00" text-anchor="middle">config.ini</text>
 </g>
+<circle class="linear-badge" cx="30.00" cy="306.00" r="11.00"/>
+<text class="linear-badge-text" x="30.00" y="310.00" text-anchor="middle">7</text>
 <g id="step-pin-values">
-<rect class="box box-action" x="30.00" y="702.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
-<text class="label-actor" x="160.00" y="716.00" text-anchor="middle">abgal</text>
-<text class="label-main" x="160.00" y="730.00" text-anchor="middle">pins five values in config.ini, a</text>
-<text class="label-main" x="160.00" y="742.00" text-anchor="middle">sixth for the store template</text>
+<rect class="box box-action" x="350.00" y="306.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="480.00" y="320.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="480.00" y="334.00" text-anchor="middle">pins five values in config.ini, a</text>
+<text class="label-main" x="480.00" y="346.00" text-anchor="middle">sixth for the store template</text>
 </g>
+<circle class="linear-badge" cx="350.00" cy="306.00" r="11.00"/>
+<text class="linear-badge-text" x="350.00" y="310.00" text-anchor="middle">8</text>
 <g id="step-verify-values">
-<rect class="box box-action" x="30.00" y="798.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
-<text class="label-actor" x="160.00" y="812.00" text-anchor="middle">abgal</text>
-<text class="label-main" x="160.00" y="826.00" text-anchor="middle">reads config.ini back, compares</text>
-<text class="label-main" x="160.00" y="838.00" text-anchor="middle">thirteen values it asked for</text>
+<rect class="box box-action" x="670.00" y="306.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="800.00" y="320.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="800.00" y="334.00" text-anchor="middle">reads config.ini back, compares</text>
+<text class="label-main" x="800.00" y="346.00" text-anchor="middle">thirteen values it asked for</text>
 </g>
-<line class="edge" x1="160.00" y1="98.00" x2="160.00" y2="126.00" marker-end="url(#arrow)"/>
-<line class="edge" x1="160.00" y1="194.00" x2="160.00" y2="222.00" marker-end="url(#arrow)"/>
-<line class="edge" x1="160.00" y1="290.00" x2="160.00" y2="318.00" marker-end="url(#arrow)"/>
-<line class="edge" x1="160.00" y1="386.00" x2="160.00" y2="414.00" marker-end="url(#arrow)"/>
-<line class="edge" x1="160.00" y1="482.00" x2="160.00" y2="510.00" marker-end="url(#arrow)"/>
-<line class="edge" x1="160.00" y1="578.00" x2="160.00" y2="606.00" marker-end="url(#arrow)"/>
-<line class="edge" x1="160.00" y1="674.00" x2="160.00" y2="702.00" marker-end="url(#arrow)"/>
-<line class="edge" x1="160.00" y1="770.00" x2="160.00" y2="798.00" marker-end="url(#arrow)"/>
+<circle class="linear-badge" cx="670.00" cy="306.00" r="11.00"/>
+<text class="linear-badge-text" x="670.00" y="310.00" text-anchor="middle">9</text>
+<line class="edge" x1="290.00" y1="64.00" x2="350.00" y2="64.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="610.00" y1="64.00" x2="670.00" y2="64.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="800.00" y1="98.00" x2="800.00" y2="168.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="670.00" y1="202.00" x2="610.00" y2="202.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="350.00" y1="202.00" x2="290.00" y2="202.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="160.00" y1="236.00" x2="160.00" y2="306.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="290.00" y1="340.00" x2="350.00" y2="340.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="610.00" y1="340.00" x2="670.00" y2="340.00" marker-end="url(#arrow)"/>
 </svg>

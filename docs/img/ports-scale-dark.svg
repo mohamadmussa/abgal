@@ -18,11 +18,11 @@
 }
 svg { background: var(--bg); }
 text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
-.label-actor { font-size: 9px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
-.label-main { font-size: 11.5px; }
-.label-duration { font-size: 10px; font-style: italic; fill: var(--muted); }
-.label-edge { font-size: 10px; fill: var(--muted); }
-.label-note { font-size: 10px; font-style: italic; fill: var(--muted); }
+.label-actor { font-size: 10px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.label-main { font-size: 12.5px; }
+.label-duration { font-size: 11px; font-style: italic; fill: var(--muted); }
+.label-edge { font-size: 11px; fill: var(--muted); }
+.label-note { font-size: 11px; font-style: italic; fill: var(--muted); }
 .box, .box-instant, .box-action { fill: var(--box-fill); stroke: var(--box-stroke); stroke-width: 1.5; }
 .box-decision { fill: var(--decision-fill); stroke: var(--box-stroke); stroke-width: 1.5; stroke-dasharray: 4 3; }
 .box-ok { fill: var(--ok-fill); stroke: var(--ok-stroke); stroke-width: 2; }

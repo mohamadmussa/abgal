@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980.00 416.00" width="980.00" height="416.00" role="img" aria-label="A guest's life, from template to deleted">
+<style>
+:root {
+  --bg: #1b1b1f;
+  --fg: #e9e9ee;
+  --muted: #a3a3ad;
+  --box-fill: #2a2a30;
+  --box-stroke: #c7c7d1;
+  --decision-fill: #26283a;
+  --track: #3c3c44;
+  --accent: #7ea2ff;
+  --ok-fill: #173524;
+  --ok-stroke: #4ade80;
+  --bad-fill: #3a1c1c;
+  --bad-stroke: #f87171;
+  --arrow: #c7c7d1;
+}
+svg { background: var(--bg); }
+text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
+.label-actor { font-size: 10px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.label-main { font-size: 12.5px; }
+.label-duration { font-size: 11px; font-style: italic; fill: var(--muted); }
+.label-edge { font-size: 11px; fill: var(--muted); }
+.label-note { font-size: 11px; font-style: italic; fill: var(--muted); }
+.box, .box-instant, .box-action { fill: var(--box-fill); stroke: var(--box-stroke); stroke-width: 1.5; }
+.box-decision { fill: var(--decision-fill); stroke: var(--box-stroke); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.box-ok { fill: var(--ok-fill); stroke: var(--ok-stroke); stroke-width: 2; }
+.box-bad { fill: var(--bad-fill); stroke: var(--bad-stroke); stroke-width: 2; }
+.bar-track { fill: var(--track); }
+.bar-fill { fill: var(--accent); }
+.edge { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+.arrowhead { fill: var(--arrow); }
+@keyframes bar-fill { from { width: 0; } to { width: 220.00px; } }
+#bar-fill-booting { animation: bar-fill 8.00s linear infinite; }
+</style>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+</marker>
+</defs>
+<g id="step-template">
+<rect class="box box-instant" x="430.00" y="30.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="560.00" y="58.00" text-anchor="middle">template</text>
+</g>
+<g id="step-stopped">
+<rect class="box box-instant" x="430.00" y="126.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="560.00" y="154.00" text-anchor="middle">stopped</text>
+</g>
+<g id="step-booting">
+<rect class="box box-wait" x="430.00" y="222.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="560.00" y="250.00" text-anchor="middle">booting</text>
+<text class="label-duration" x="560.00" y="276.00" text-anchor="middle">up to 300 s</text>
+<rect class="bar-track" x="450.00" y="282.00" width="220.00" height="6.00" rx="3" ry="3"/>
+<rect id="bar-fill-booting" class="bar-fill" x="450.00" y="282.00" width="0" height="6.00" rx="3" ry="3"/>
+</g>
+<g id="step-running">
+<rect class="box box-instant" x="430.00" y="318.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="560.00" y="346.00" text-anchor="middle">running</text>
+</g>
+<g id="step-deleted">
+<rect class="box box-terminal box-ok" x="750.00" y="126.00" width="200.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-main" x="850.00" y="154.00" text-anchor="middle">deleted</text>
+</g>
+<line class="edge" x1="560.00" y1="98.00" x2="560.00" y2="126.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="570.00" y="112.00" text-anchor="middle">abgal create</text>
+<line class="edge" x1="560.00" y1="194.00" x2="560.00" y2="222.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="570.00" y="208.00" text-anchor="middle">abgal start</text>
+<line class="edge" x1="560.00" y1="290.00" x2="560.00" y2="318.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="570.00" y="304.00" text-anchor="middle">boot completed</text>
+<path class="edge" d="M 430.00 256.00 C 375.00 256.00, 375.00 160.00, 430.00 160.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="367.00" y="208.00" text-anchor="end">did not come up</text>
+<path class="edge" d="M 430.00 352.00 C 330.00 352.00, 330.00 160.00, 430.00 160.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="322.00" y="256.00" text-anchor="end">abgal stop, or temperature watch at 96 C</text>
+<path class="edge" d="M 690.00 160.00 C 720.00 160.00, 720.00 160.00, 750.00 160.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="700.00" y="152.00" text-anchor="middle">abgal delete</text>
+<text class="label-note" x="310.00" y="164.00" text-anchor="end">abgal start, not enough memory: stays stopped</text>
+</svg>
