@@ -9,7 +9,7 @@ one diagram can never drift apart in layout, only in color.
 
     tools/gen-architecture-diagrams.py
 
-Running it with no arguments regenerates all sixteen files, eight
+Running it with no arguments regenerates all eighteen files, nine
 diagrams in light and dark, deterministically: the same flow always
 produces the same bytes. Which renderer draws which diagram, and the
 fact-by-fact derivation behind each flow, is tracked in issue #39, not
@@ -415,6 +415,37 @@ FLOW_PORTS = flow(
 )
 
 
+# ----------------------------------------------------------- readme-lifecycle
+
+
+# The eight transitions README.md#lifecycle names, minus the memory-refusal
+# self-loop (no equivalent shape in this renderer, drawn as a note beside
+# "stopped" instead by draw_lifecycle_note) and with "abgal stop" and the
+# temperature watch folded into one edge (both are real, separate causes,
+# but both name the same source and the same target, and this renderer
+# draws one curve per src/dst pair, not one per label). "booting" is the
+# only real wait in the whole lifecycle, so it is the only step that gets
+# a seconds value, the same 300 s FLOW_START's own poll-boot already uses,
+# never a second, invented timeout for the same real --timeout.
+FLOW_LIFECYCLE = flow(
+    steps=[
+        step("template", None, "template", "instant"),
+        step("stopped", None, "stopped", "instant"),
+        step("booting", None, "booting", "wait", 300, True),
+        step("running", None, "running", "instant"),
+        step("deleted", None, "deleted", "terminal", None, None, "ok"),
+    ],
+    edges=[
+        edge("template", "stopped", "abgal create"),
+        edge("stopped", "booting", "abgal start"),
+        edge("booting", "running", "boot completed"),
+        edge("booting", "stopped", "did not come up"),
+        edge("running", "stopped", "abgal stop, or temperature watch at 96 C"),
+        edge("stopped", "deleted", "abgal delete"),
+    ],
+)
+
+
 # -------------------------------------------------------------------- layout
 
 
@@ -475,6 +506,141 @@ def _layout(flow_):
     width = x_side + SIDE_W + MARGIN
     return {"positions": positions, "width": width, "height": height,
             "main_order": [s["id"] for s in main_steps]}
+
+
+LINEAR_COLS = 3
+LINEAR_COL_GAP = 60.0
+LINEAR_ROW_GAP = 70.0
+LINEAR_BADGE_R = 11.0
+
+
+def _layout_linear(flow_):
+    """A boustrophedon grid: reads left to right, then wraps like a
+    checklist, instead of one tall column.
+
+    create-flow has no decision and no side branch, nine plain actions in
+    a fixed order. Read as _layout's usual single column, nine identical
+    boxes give no visual cue that this is a checklist rather than a state
+    machine. Wrapping the column into a snake keeps every consecutive
+    step adjacent, row-mates side by side, a row wrap stacked at the same
+    x, so every edge stays a straight line, only its direction
+    alternates.
+    """
+    steps = flow_["steps"]
+    positions = {}
+    for i, s in enumerate(steps):
+        row, col = divmod(i, LINEAR_COLS)
+        if row % 2 == 1:
+            col = LINEAR_COLS - 1 - col
+        x = MARGIN + col * (BOX_W + LINEAR_COL_GAP)
+        y = MARGIN + row * (BOX_H + LINEAR_ROW_GAP)
+        positions[s["id"]] = {"x": x, "y": y, "w": BOX_W, "h": BOX_H,
+                              "step": s, "number": i + 1}
+    rows = -(-len(steps) // LINEAR_COLS)
+    width = MARGIN + LINEAR_COLS * BOX_W + (LINEAR_COLS - 1) * LINEAR_COL_GAP + MARGIN
+    height = MARGIN + rows * BOX_H + (rows - 1) * LINEAR_ROW_GAP + MARGIN
+    return {"positions": positions, "width": width, "height": height}
+
+
+STAIR_STEPS_PER_RUNG = 3
+STAIR_DX = 90.0
+
+
+def _layout_stairs(flow_):
+    """A staircase: three steps per escalation tier, each tier shifted
+    right of the last, so kill/SIGTERM/SIGKILL reads as a real descent
+    instead of the one flat column every other state ladder already is.
+
+    Built for stop-ladder specifically, not a general-purpose engine:
+    the count of three steps per rung and the assumption that exactly
+    one step (the "still running" terminal) follows the last rung are
+    both stop-ladder's own shape, not read from the flow. The shared
+    "stopped" exit is laid out exactly like _layout already places a
+    side box, off to the side at the average height of what points to
+    it, just computed here by hand since the staircase has no single
+    main column _layout's own math can reuse directly.
+    """
+    incoming = {}
+    for e in flow_["edges"]:
+        incoming.setdefault(e["to_id"], []).append(e)
+
+    side_ids = [s["id"] for s in flow_["steps"]
+                if len(incoming.get(s["id"], [])) > 1]
+    main_steps = [s for s in flow_["steps"] if s["id"] not in side_ids]
+    side_steps = [s for s in flow_["steps"] if s["id"] in side_ids]
+
+    # The escalation tiers proper, minus the trailing "still running"
+    # terminal, rounded up to whole rungs of three.
+    rungs = -(-(len(main_steps) - 1) // STAIR_STEPS_PER_RUNG)
+
+    positions = {}
+    for i, s in enumerate(main_steps):
+        rung = min(i // STAIR_STEPS_PER_RUNG, rungs - 1)
+        x = MARGIN + rung * STAIR_DX
+        y = MARGIN + i * PITCH
+        positions[s["id"]] = {"x": x, "y": y, "w": BOX_W, "h": BOX_H,
+                              "step": s}
+
+    x_side = MARGIN + rungs * STAIR_DX + BOX_W + SIDE_GAP
+    for s in side_steps:
+        sources_y = [positions[e["from_id"]]["y"] + positions[e["from_id"]]["h"] / 2
+                     for e in flow_["edges"]
+                     if e["to_id"] == s["id"] and e["from_id"] in positions]
+        cy = sum(sources_y) / len(sources_y) if sources_y else MARGIN
+        positions[s["id"]] = {"x": x_side, "y": cy - SIDE_H / 2,
+                              "w": SIDE_W, "h": SIDE_H, "step": s}
+
+    height = MARGIN + max(0, len(main_steps) - 1) * PITCH + BOX_H + MARGIN
+    width = x_side + SIDE_W + MARGIN
+    return {"positions": positions, "width": width, "height": height,
+            "main_order": [s["id"] for s in main_steps]}
+
+
+LIFECYCLE_MAIN_ORDER = ("template", "stopped", "booting", "running")
+LIFECYCLE_LOOP_1 = 55.0
+LIFECYCLE_LOOP_2 = 100.0
+LIFECYCLE_NOTE_TEXT = "abgal start, not enough memory: stays stopped"
+
+
+def _layout_lifecycle(flow_):
+    """template, stopped, booting, running in one column in that order,
+    "deleted" a side box off "stopped" the same way stop-ladder's shared
+    exit sits beside its own column, and the two edges that return to an
+    earlier state (booting failing, running stopping) as loops bulging
+    out to the left, deeper for the one that skips further back.
+
+    Built for FLOW_LIFECYCLE specifically, not a general engine: _layout's
+    generic side box only ever receives, but "stopped" here also sends
+    two edges of its own, template's create and its own delete, which a
+    plain side box has no sane way to draw, it would have to reach back
+    across the whole column.
+    """
+    by_id = dict((s["id"], s) for s in flow_["steps"])
+    main_order = list(LIFECYCLE_MAIN_ORDER)
+
+    back_labels = [e["label"] for e in flow_["edges"] if e["label"]
+                   and e["from_id"] in main_order and e["to_id"] in main_order
+                   and main_order.index(e["to_id"]) < main_order.index(e["from_id"])]
+    back_labels.append(LIFECYCLE_NOTE_TEXT)
+    label_room = max([len(t) * 6.0 for t in back_labels] + [0.0]) + 30.0
+
+    x_main = MARGIN + label_room + LIFECYCLE_LOOP_2
+    positions = {}
+    for i, sid in enumerate(main_order):
+        positions[sid] = {"x": x_main, "y": MARGIN + i * PITCH,
+                          "w": BOX_W, "h": BOX_H, "step": by_id[sid]}
+
+    stopped = positions["stopped"]
+    x_side = x_main + BOX_W + SIDE_GAP
+    positions["deleted"] = {
+        "x": x_side,
+        "y": stopped["y"] + stopped["h"] / 2.0 - SIDE_H / 2.0,
+        "w": SIDE_W, "h": SIDE_H, "step": by_id["deleted"]}
+
+    height = MARGIN + (len(main_order) - 1) * PITCH + BOX_H + MARGIN
+    width = x_side + SIDE_W + MARGIN
+    return {"positions": positions, "width": width, "height": height,
+            "main_order": main_order}
 
 
 TOPO_NODE_W = 220.0
@@ -882,6 +1048,188 @@ def draw_states(flow_):
         parts.append(_box_markup(positions[s["id"]]))
     for e in flow_["edges"]:
         parts.append(_edge_markup(e, positions, main_order))
+    return "\n".join(parts)
+
+
+def draw_lifecycle_note(layout):
+    """The memory-refusal self-loop, as a note beside "stopped" instead of
+    a drawn arrow back onto itself.
+
+    _edge_markup only ever connects two different boxes; one box that is
+    both the source and the target of the same curve would need a shape
+    nothing else in this file draws, for one edge that is not a step to a
+    different state anyway, it is "start refused, nothing changed".
+    """
+    pos = layout["positions"]["stopped"]
+    note_x = pos["x"] - LIFECYCLE_LOOP_2 - 20.0
+    note_y = pos["y"] + pos["h"] / 2.0 + 4.0
+    return ('<text class="label-note" x="%s" y="%s" text-anchor="end">'
+           '%s</text>'
+           % (fnum(note_x), fnum(note_y), _esc(LIFECYCLE_NOTE_TEXT)))
+
+
+def _linear_badge_markup(pos):
+    """The small numbered circle at a box's top-left corner, create-flow's
+    own cue that this diagram reads as an ordered checklist."""
+    cx, cy, number = pos["x"], pos["y"], pos["number"]
+    parts = ['<circle class="linear-badge" cx="%s" cy="%s" r="%s"/>'
+            % (fnum(cx), fnum(cy), fnum(LINEAR_BADGE_R))]
+    parts.append('<text class="linear-badge-text" x="%s" y="%s" '
+                 'text-anchor="middle">%s</text>'
+                 % (fnum(cx), fnum(cy + 4.0), number))
+    return "\n".join(parts)
+
+
+def _linear_edge_markup(e, positions):
+    """One arrow of the checklist: sideways within a row, straight down
+    where the snake wraps to the next one."""
+    src, dst = positions[e["from_id"]], positions[e["to_id"]]
+    if src["y"] == dst["y"]:
+        if dst["x"] >= src["x"]:
+            x1, x2 = src["x"] + src["w"], dst["x"]
+        else:
+            x1, x2 = src["x"], dst["x"] + dst["w"]
+        y1 = y2 = src["y"] + src["h"] / 2.0
+    else:
+        x1 = x2 = src["x"] + src["w"] / 2.0
+        y1, y2 = src["y"] + src["h"], dst["y"]
+    path = ('<line class="edge" x1="%s" y1="%s" x2="%s" y2="%s" '
+           'marker-end="url(#arrow)"/>'
+           % (fnum(x1), fnum(y1), fnum(x2), fnum(y2)))
+    out = [path]
+    if e["label"]:
+        label_x, label_y = (x1 + x2) / 2.0, y1 - 6.0
+        out.append('<text class="label-edge" x="%s" y="%s" '
+                   'text-anchor="middle">%s</text>'
+                   % (fnum(label_x), fnum(label_y), _esc(e["label"])))
+    return "\n".join(out)
+
+
+def draw_linear(flow_):
+    """The body markup of a boustrophedon checklist diagram.
+
+    Reuses _box_markup for every box unchanged, a plain action step needs
+    nothing _box_markup does not already draw; only the grid position and
+    a numbered badge are new.
+    """
+    layout = _layout_linear(flow_)
+    positions = layout["positions"]
+    parts = [DEFS_MARKUP]
+    for s in flow_["steps"]:
+        parts.append(_box_markup(positions[s["id"]]))
+        parts.append(_linear_badge_markup(positions[s["id"]]))
+    for e in flow_["edges"]:
+        parts.append(_linear_edge_markup(e, positions))
+    return "\n".join(parts)
+
+
+def _stairs_edge_markup(e, positions, main_order):
+    """One arrow of the staircase: straight from one step to the next,
+    vertical inside a rung and diagonal where the rung changes, or an
+    S-curve out to the shared "stopped" box."""
+    src, dst = positions[e["from_id"]], positions[e["to_id"]]
+    if e["to_id"] in main_order:
+        x1, y1 = src["x"] + src["w"] / 2.0, src["y"] + src["h"]
+        x2, y2 = dst["x"] + dst["w"] / 2.0, dst["y"]
+        path = ('<line class="edge" x1="%s" y1="%s" x2="%s" y2="%s" '
+               'marker-end="url(#arrow)"/>'
+               % (fnum(x1), fnum(y1), fnum(x2), fnum(y2)))
+        label_x, label_y = x1 + 10.0, (y1 + y2) / 2.0
+    else:
+        x1, y1 = src["x"] + src["w"], src["y"] + src["h"] / 2.0
+        x2, y2 = dst["x"], dst["y"] + dst["h"] / 2.0
+        gap = (x2 - x1) / 2.0
+        c1x, c2x = x1 + gap, x2 - gap
+        path = ('<path class="edge" d="M %s %s C %s %s, %s %s, %s %s" '
+               'marker-end="url(#arrow)"/>'
+               % (fnum(x1), fnum(y1), fnum(c1x), fnum(y1),
+                  fnum(c2x), fnum(y2), fnum(x2), fnum(y2)))
+        label_x, label_y = x1 + 10.0, y1 - 8.0
+
+    out = [path]
+    if e["label"]:
+        out.append('<text class="label-edge" x="%s" y="%s" '
+                   'text-anchor="middle">%s</text>'
+                   % (fnum(label_x), fnum(label_y), _esc(e["label"])))
+    return "\n".join(out)
+
+
+def draw_stairs(flow_):
+    """The body markup of the stop-ladder staircase: boxes, bars, arrows."""
+    layout = _layout_stairs(flow_)
+    positions, main_order = layout["positions"], layout["main_order"]
+    parts = [DEFS_MARKUP]
+    for s in flow_["steps"]:
+        parts.append(_box_markup(positions[s["id"]]))
+    for e in flow_["edges"]:
+        parts.append(_stairs_edge_markup(e, positions, main_order))
+    return "\n".join(parts)
+
+
+def _lifecycle_edge_markup(e, positions, main_order):
+    """One arrow of the lifecycle column: a straight drop for a forward
+    step, a loop bulging out to the left for a step back onto an earlier
+    state, or an S-curve out to the "deleted" side box.
+
+    The loop is what _edge_markup has no shape for: two of this flow's
+    edges land back on "stopped" from further down the same column, not
+    from a side box, so they need their own curve out and back rather
+    than the generic side-box S.
+    """
+    src, dst = positions[e["from_id"]], positions[e["to_id"]]
+    src_i = main_order.index(e["from_id"]) if e["from_id"] in main_order else None
+    dst_i = main_order.index(e["to_id"]) if e["to_id"] in main_order else None
+
+    if src_i is not None and dst_i is not None and dst_i == src_i + 1:
+        x1, y1 = src["x"] + src["w"] / 2.0, src["y"] + src["h"]
+        x2, y2 = dst["x"] + dst["w"] / 2.0, dst["y"]
+        path = ('<line class="edge" x1="%s" y1="%s" x2="%s" y2="%s" '
+               'marker-end="url(#arrow)"/>'
+               % (fnum(x1), fnum(y1), fnum(x2), fnum(y2)))
+        label_x, label_y = x1 + 10.0, (y1 + y2) / 2.0
+        anchor = "middle"
+    elif src_i is not None and dst_i is not None and dst_i < src_i:
+        depth = LIFECYCLE_LOOP_1 if src_i - dst_i == 1 else LIFECYCLE_LOOP_2
+        x1, y1 = src["x"], src["y"] + src["h"] / 2.0
+        x2, y2 = dst["x"], dst["y"] + dst["h"] / 2.0
+        c1x, c2x = x1 - depth, x2 - depth
+        path = ('<path class="edge" d="M %s %s C %s %s, %s %s, %s %s" '
+               'marker-end="url(#arrow)"/>'
+               % (fnum(x1), fnum(y1), fnum(c1x), fnum(y1),
+                  fnum(c2x), fnum(y2), fnum(x2), fnum(y2)))
+        label_x, label_y = x1 - depth - 8.0, (y1 + y2) / 2.0
+        anchor = "end"
+    else:
+        x1, y1 = src["x"] + src["w"], src["y"] + src["h"] / 2.0
+        x2, y2 = dst["x"], dst["y"] + dst["h"] / 2.0
+        gap = SIDE_GAP / 2.0
+        c1x, c2x = x1 + gap, x2 - gap
+        path = ('<path class="edge" d="M %s %s C %s %s, %s %s, %s %s" '
+               'marker-end="url(#arrow)"/>'
+               % (fnum(x1), fnum(y1), fnum(c1x), fnum(y1),
+                  fnum(c2x), fnum(y2), fnum(x2), fnum(y2)))
+        label_x, label_y = x1 + 10.0, y1 - 8.0
+        anchor = "middle"
+
+    out = [path]
+    if e["label"]:
+        out.append('<text class="label-edge" x="%s" y="%s" '
+                   'text-anchor="%s">%s</text>'
+                   % (fnum(label_x), fnum(label_y), anchor, _esc(e["label"])))
+    return "\n".join(out)
+
+
+def draw_lifecycle(flow_):
+    """The body markup of the README lifecycle column: boxes, arrows, the
+    memory-refusal note beside "stopped"."""
+    layout = _layout_lifecycle(flow_)
+    positions, main_order = layout["positions"], layout["main_order"]
+    parts = [DEFS_MARKUP]
+    for s in flow_["steps"]:
+        parts.append(_box_markup(positions[s["id"]]))
+    for e in flow_["edges"]:
+        parts.append(_lifecycle_edge_markup(e, positions, main_order))
+    parts.append(draw_lifecycle_note(layout))
     return "\n".join(parts)
 
 
@@ -1344,13 +1692,13 @@ def css_for(palette, flow_):
     lines.append("svg { background: var(--bg); }")
     lines.append("text { font-family: Helvetica, Arial, sans-serif; "
                  "fill: var(--fg); }")
-    lines.append(".label-actor { font-size: 9px; fill: var(--muted); "
+    lines.append(".label-actor { font-size: 10px; fill: var(--muted); "
                  "letter-spacing: .05em; text-transform: uppercase; }")
-    lines.append(".label-main { font-size: 11.5px; }")
-    lines.append(".label-duration { font-size: 10px; font-style: italic; "
+    lines.append(".label-main { font-size: 12.5px; }")
+    lines.append(".label-duration { font-size: 11px; font-style: italic; "
                  "fill: var(--muted); }")
-    lines.append(".label-edge { font-size: 10px; fill: var(--muted); }")
-    lines.append(".label-note { font-size: 10px; font-style: italic; "
+    lines.append(".label-edge { font-size: 11px; fill: var(--muted); }")
+    lines.append(".label-note { font-size: 11px; font-style: italic; "
                  "fill: var(--muted); }")
     lines.append(".box, .box-instant, .box-action { fill: var(--box-fill); "
                  "stroke: var(--box-stroke); stroke-width: 1.5; }")
@@ -1412,6 +1760,18 @@ def _swimlane_extra_css(flow_, channels, layout):
                      % (s["id"], fnum(x1), fnum(x2)))
         lines.append("#ping-%s { animation: ping-%s %ss ease-in-out "
                      "infinite alternate; }" % (s["id"], s["id"], duration))
+    lines.append("</style>")
+    return "\n".join(lines)
+
+
+def _linear_extra_css():
+    """A second, palette-independent `<style>` block, create-flow's own
+    numbered badges. Kept apart from css_for so no other diagram carries
+    a badge class it has no circles for."""
+    lines = ["<style>"]
+    lines.append(".linear-badge { fill: var(--accent); }")
+    lines.append(".linear-badge-text { font-size: 11px; font-weight: bold; "
+                 "fill: var(--bg); }")
     lines.append("</style>")
     return "\n".join(lines)
 
@@ -1489,14 +1849,14 @@ def _document(flow_, palette, body, layout, aria_label, extra_style=""):
 def outputs():
     """Every diagram this script writes, as (path, svg text) pairs.
 
-    All eight diagrams this file was built for: stop-ladder,
+    All nine diagrams this file was built for: stop-ladder,
     pieces-topology, create-flow, the FLOW_START trio (start-states,
-    start-swimlane, start-sequence), watch-states and ports-scale, each in
-    both palettes. A future diagram only needs its own FLOW_* constant
-    and two more yields here.
+    start-swimlane, start-sequence), watch-states, the README lifecycle
+    and ports-scale, each in both palettes. A future diagram only needs
+    its own FLOW_* constant and two more yields here.
     """
-    stop_layout = _layout(FLOW_STOP)
-    stop_body = draw_states(FLOW_STOP)
+    stop_layout = _layout_stairs(FLOW_STOP)
+    stop_body = draw_stairs(FLOW_STOP)
     for palette in ("light", "dark"):
         yield ("docs/img/stop-ladder-%s.svg" % palette,
               _document(FLOW_STOP, palette, stop_body, stop_layout,
@@ -1509,12 +1869,13 @@ def outputs():
               _document(FLOW_PIECES, palette, pieces_body, pieces_layout,
                         "The pieces of AbGal and how they relate"))
 
-    create_layout = _layout(FLOW_CREATE)
-    create_body = draw_states(FLOW_CREATE)
+    create_layout = _layout_linear(FLOW_CREATE)
+    create_body = draw_linear(FLOW_CREATE)
+    create_style = _linear_extra_css()
     for palette in ("light", "dark"):
         yield ("docs/img/create-flow-%s.svg" % palette,
               _document(FLOW_CREATE, palette, create_body, create_layout,
-                        "The nine steps of abgal create"))
+                        "The nine steps of abgal create", create_style))
 
     start_layout = _layout(FLOW_START)
     start_body = draw_states(FLOW_START)
@@ -1546,6 +1907,14 @@ def outputs():
         yield ("docs/img/watch-states-%s.svg" % palette,
               _document(FLOW_WATCH, palette, watch_body, watch_layout,
                         "States abgal watch moves through"))
+
+    lifecycle_layout = _layout_lifecycle(FLOW_LIFECYCLE)
+    lifecycle_body = draw_lifecycle(FLOW_LIFECYCLE)
+    for palette in ("light", "dark"):
+        yield ("docs/img/lifecycle-%s.svg" % palette,
+              _document(FLOW_LIFECYCLE, palette, lifecycle_body,
+                        lifecycle_layout,
+                        "A guest's life, from template to deleted"))
 
     ports_layout = _layout_ports(FLOW_PORTS)
     ports_body = draw_ports(FLOW_PORTS)
