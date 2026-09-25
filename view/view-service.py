@@ -287,7 +287,7 @@ function renderGuests(rows) {
 
 async function refreshGuests() {
   try {
-    const a = await fetch("gaeste?t=" + Date.now());
+    const a = await fetch("guests?t=" + Date.now());
     if (!a.ok) throw new Error(await a.text());
     const data = await a.json();
     selected = data.selected;
@@ -301,7 +301,7 @@ async function refreshGuests() {
 
 async function selectGuest(name) {
   try {
-    const a = await fetch("wechseln", {
+    const a = await fetch("switch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name })
@@ -319,7 +319,7 @@ async function fetchFrame() {
   loading = true;
   const start = performance.now();
   try {
-    const a = await fetch("bild.png?s=" + step + "&t=" + Date.now());
+    const a = await fetch("frame.png?s=" + step + "&t=" + Date.now());
     if (!a.ok) throw new Error(await a.text());
     const prev = img.src;
     img.src = URL.createObjectURL(await a.blob());
@@ -351,15 +351,15 @@ async function send(route, data) {
 // need to know the device resolution or the downscale step.
 img.addEventListener("click", (e) => {
   const r = img.getBoundingClientRect();
-  send("tippen", { ax: (e.clientX - r.left) / r.width,
+  send("tap", { ax: (e.clientX - r.left) / r.width,
                      ay: (e.clientY - r.top) / r.height });
 });
 
 document.querySelectorAll("[data-key]").forEach(b =>
-  b.onclick = () => send("taste", { name: b.dataset.key }));
+  b.onclick = () => send("key", { name: b.dataset.key }));
 
 document.querySelectorAll("[data-swipe]").forEach(b =>
-  b.onclick = () => send("wischen", { richtung: b.dataset.swipe }));
+  b.onclick = () => send("swipe", { direction: b.dataset.swipe }));
 
 document.querySelectorAll("[data-step]").forEach(b =>
   b.onclick = () => { step = +b.dataset.step; fetchFrame(); });
@@ -368,7 +368,7 @@ document.getElementById("now").onclick = fetchFrame;
 
 document.getElementById("word").addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || !e.target.value) return;
-  send("text", { wort: e.target.value });
+  send("text", { word: e.target.value });
   e.target.value = "";
 });
 
@@ -411,21 +411,21 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if p in ("", "index.html"):
                 return self.respond(200, "text/html; charset=utf-8", PAGE)
-            if p == "gaeste":
+            if p == "guests":
                 return self.respond(200, "application/json", json.dumps({
                     "selected": self.server.selected, "guests": guest_rows(),
                 }))
             if self.server.device is None:
                 return self.respond(409, "text/plain; charset=utf-8", "no guest selected")
-            if p == "bild.png":
+            if p == "frame.png":
                 step = 2
                 if "s=" in self.path:
                     step = max(1, min(6, int(self.path.split("s=")[1][0])))
                 return self.respond(200, "image/png", self.server.device.screenshot(step))
-            if p == "masse":
+            if p == "size":
                 w, h = self.server.device.size()
                 return self.respond(200, "application/json",
-                                    json.dumps({"breite": w, "hoehe": h}))
+                                    json.dumps({"width": w, "height": h}))
             self.respond(404, "text/plain; charset=utf-8", "unknown")
         except Exception as e:
             self.respond(500, "text/plain; charset=utf-8", str(e))
@@ -436,7 +436,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
             data = json.loads(self.rfile.read(length) or b"{}")
 
-            if p == "wechseln":
+            if p == "switch":
                 return self.switch_guest(data.get("name"))
 
             if self.server.device is None:
@@ -444,18 +444,18 @@ class Handler(BaseHTTPRequestHandler):
             d = self.server.device
             width, height = d.size()
 
-            if p == "tippen":
+            if p == "tap":
                 x = int(float(data["ax"]) * width)
                 y = int(float(data["ay"]) * height)
                 d.tap(max(0, min(width - 1, x)), max(0, min(height - 1, y)))
-            elif p == "taste":
+            elif p == "key":
                 name = data["name"]
                 if name not in KEYS:
                     return self.respond(400, "text/plain; charset=utf-8", "key locked")
                 d.press_key(name)
             elif p == "text":
-                d.type_text(str(data["wort"])[:200])
-            elif p == "wischen":
+                d.type_text(str(data["word"])[:200])
+            elif p == "swipe":
                 mx, my = width // 2, height // 2
                 reach = height // 3
                 pairs = {
@@ -464,9 +464,9 @@ class Handler(BaseHTTPRequestHandler):
                     "left":  (mx + reach, my, mx - reach, my),
                     "right": (mx - reach, my, mx + reach, my),
                 }
-                if data["richtung"] not in pairs:
+                if data["direction"] not in pairs:
                     return self.respond(400, "text/plain; charset=utf-8", "unknown")
-                d.swipe(*pairs[data["richtung"]], 220)
+                d.swipe(*pairs[data["direction"]], 220)
             else:
                 return self.respond(404, "text/plain; charset=utf-8", "unknown")
 
