@@ -1,5 +1,9 @@
 # AbGal
 
+[![Build status](https://github.com/mohamadmussa/abgal/actions/workflows/checks.yml/badge.svg)](https://github.com/mohamadmussa/abgal/actions/workflows/checks.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
+
 **Android Batch Guests, Accelerated and Local.** AbGal creates Android emulators
 from a short list of templates and runs several of them side by side on one
 Linux machine, without Docker and without Android Studio. It checks memory
