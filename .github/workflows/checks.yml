@@ -1,6 +1,7 @@
-# What has to be true before a branch reaches main. The gate runs here without
-# .private-words, which is never committed, so a pass means "no private shapes",
-# not "nothing private". The full gate runs locally in .githooks/pre-commit.
+# What has to be true before a branch reaches main. tools/run_all.py is the one
+# gate, called here the same way .githooks/pre-commit calls it. The gate runs
+# here without .private-words, which is never committed, so a pass means "no
+# private shapes", not "nothing private".
 name: checks
 
 on:
@@ -17,12 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Commit gate over every tracked file
-        run: python3 tools/check-private.py --all
-
-      - name: Python compiles
-        run: python3 -m py_compile abgal tools/check-private.py
-
       - name: The program builds its own command line
         run: python3 abgal --help > /dev/null
 
@@ -38,22 +33,7 @@ jobs:
           sudo mv shellcheck-v0.10.0/shellcheck /usr/local/bin/
           shellcheck --version
 
-      # A clean run and a run over no files both print nothing, so the list is
-      # printed and an empty one fails.
-      - name: ShellCheck over the tracked shell files
-        run: |
-          set -euo pipefail
-          mapfile -d '' -t files < <(git ls-files -z '*.sh' .githooks/pre-commit)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No shell file matched. That is a broken pattern, not a clean tree."
-            exit 1
-          fi
-          printf 'Checking %d files:\n' "${#files[@]}"
-          printf '  %s\n' "${files[@]}"
-          shellcheck --severity=warning --shell=bash "${files[@]}"
-
-      # Pinned like ShellCheck. It runs after ShellCheck on purpose, because
-      # actionlint then also checks every run: block with it.
+      # Pinned like ShellCheck.
       - name: Install actionlint 1.7.7
         run: |
           curl -sSLo al.tar.gz \
@@ -64,7 +44,13 @@ jobs:
           sudo mv actionlint /usr/local/bin/
           actionlint -version
 
-      # A clean pass says the syntax holds. It does not prove that every
-      # github.event field exists, a misspelled one passes.
-      - name: actionlint over the workflows
-        run: actionlint -verbose
+      - name: Install pytest
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r requirements-dev.txt
+
+      # Privacy gate, Python compiles, ShellCheck, actionlint, pytest, in that
+      # fixed order, over every tracked file. The same command a contributor
+      # runs locally with tools/run-all.sh --all.
+      - name: Run the quality gate
+        run: python3 tools/run_all.py --all
