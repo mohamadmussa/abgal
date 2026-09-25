@@ -74,11 +74,12 @@ it, the same way and with `--no-metrics`. On the machine AbGal is developed on,
 ```
 
 On the machine AbGal is developed on, the start took 50 seconds until the guest
-was ready (2026-09-23). `status` then shows the process and the serial:
+was ready (2026-09-23). `status` then shows it as live, and the device adb
+reached it on:
 
 ```text
-GUEST                  ID        STATE       SERIAL         ADB          TEMPLATE
-dev                    19c95791  pid 2713569 emulator-5554  device       phone-1080x2400-480-api35-x86_64
+NAME                   ID        STATE     DEVICE         ADB          TEMPLATE
+dev                    19c95791  live      emulator-5554  device       phone-1080x2400-480-api35-x86_64
 
 Memory available: 9211 MB. A guest needs its own size plus about 900 MB.
 ```

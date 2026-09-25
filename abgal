@@ -1190,12 +1190,12 @@ def cmd_status(args):
         print(json.dumps({"free_mb": free, "guests": guest_rows}))
         return 0
 
-    layout = "%-22s %-9s %-11s %-14s %-12s %s"
-    print(layout % ("GUEST", "ID", "STATE", "SERIAL", "ADB", "TEMPLATE"))
+    layout = "%-22s %-9s %-9s %-14s %-12s %s"
+    print(layout % ("NAME", "ID", "STATE", "DEVICE", "ADB", "TEMPLATE"))
     for name, template, number in rows:
         pid = running_pid(name)
         serial, state = by_name.get(name, (None, None))
-        running = "stopped" if pid is None else "pid %d" % pid
+        running = "stopped" if pid is None else "live"
         if pid is not None and serial is None:
             state = "not visible"
         print(layout % (name, number, running, serial or "-", state or "-", template))
