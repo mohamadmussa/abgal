@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Refuses a commit message that does not match CONTRIBUTING.md's Commits
+# section: subject as "type(scope): subject", then a blank line, then a
+# bullet list, never a prose paragraph.
+set -euo pipefail
+msg_file="$1"
+
+mapfile -t lines < <(grep -v '^#' "$msg_file")
+
+while [ "${#lines[@]}" -gt 0 ] && [ -z "${lines[-1]}" ]; do
+  unset 'lines[-1]'
+done
+
+if [ "${#lines[@]}" -eq 0 ]; then
+  exit 0
+fi
+
+subject="${lines[0]}"
+
+# Merge commits are not subject to the type(scope): subject shape.
+if [[ "$subject" == Merge\ * ]]; then
+  exit 0
+fi
+
+if ! [[ "$subject" =~ ^(feat|fix|docs|ci|refactor|test|chore)\([a-zA-Z0-9._-]+\):\ .+ ]]; then
+  echo "commit-msg: subject must be 'type(scope): subject', type one of feat fix docs ci refactor test chore" >&2
+  echo "  got: $subject" >&2
+  exit 1
+fi
+
+if [ "${#lines[@]}" -eq 1 ]; then
+  exit 0
+fi
+
+if [ -n "${lines[1]}" ]; then
+  echo "commit-msg: a blank line must separate the subject from the body" >&2
+  exit 1
+fi
+
+body_line=""
+for ((i = 2; i < ${#lines[@]}; i++)); do
+  if [ -n "${lines[$i]}" ]; then
+    body_line="${lines[$i]}"
+    break
+  fi
+done
+
+if [ -n "$body_line" ] && ! [[ "$body_line" =~ ^-\  ]]; then
+  echo "commit-msg: the body must open with a bullet list ('- ...'), not a prose paragraph" >&2
+  echo "  got: $body_line" >&2
+  exit 1
+fi
+
+exit 0
