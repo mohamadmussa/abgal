@@ -12,19 +12,8 @@ comes after.
 
 ## A guest's life
 
-Every command moves a guest from one state to another:
-
-```mermaid
-stateDiagram-v2
-    [*] --> template: a line in devices.conf
-    template --> stopped: abgal create
-    stopped --> booting: abgal start
-    booting --> running: boot completed
-    booting --> stopped: did not come up
-    running --> stopped: abgal stop
-    running --> stopped: temperature watch
-    stopped --> [*]: abgal delete
-```
+Every command moves a guest from one state to another, drawn in the root
+README's [Lifecycle](../README.md#lifecycle).
 
 A template is a line of text. A guest is a folder under `avd/` with a disk of
 its own, made from that line. A running guest is an emulator process with a

@@ -35,18 +35,16 @@ that one file, one command at a time.
 Every command moves a guest between the same small set of states, from a
 line in `devices.conf` through `create`, `start`, running, and back to
 stopped again, by either `abgal stop` or the temperature watch at 96 C.
-README.md already draws this as a state diagram, see
+README.md already draws this as an animated state diagram, see
 [Lifecycle](../README.md#lifecycle), so it is not repeated here.
-`docs/README.md` carries a second, slightly different copy of the same
-diagram, missing the memory refusal and the exact temperature. That is a
-small, existing inconsistency between two files, left as it is here rather
-than fixed as a side effect of this page.
+`docs/README.md` links to the same picture instead of keeping its own copy,
+so there is only one diagram to keep in step with the real states.
 
 ## Creating a guest
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="img/create-flow-dark.svg">
-  <img src="img/create-flow-light.svg" alt="Nine steps in a column for abgal create: refuse an invalid name; check the screen is listed by avdmanager; fetch the system image if missing; refuse a running guest; delete and recreate, or keep the disk; create avd/ and call avdmanager create avd; write abgal-template; pin five values in config.ini, a sixth for the store template; read config.ini back and compare thirteen values against what was asked for.">
+  <img src="img/create-flow-light.svg" alt="Nine numbered steps in a checklist, three rows of three read left to right then wrapped, for abgal create: refuse an invalid name; check the screen is listed by avdmanager; fetch the system image if missing; refuse a running guest; delete and recreate, or keep the disk; create avd/ and call avdmanager create avd; write abgal-template; pin five values in config.ini, a sixth for the store template; read config.ini back and compare thirteen values against what was asked for.">
 </picture>
 
 `abgal create` takes nine steps for every guest, ending with `create`
