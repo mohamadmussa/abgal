@@ -66,16 +66,19 @@ other: the emulator process itself, adb polling for its console, a
 temperature watch subprocess, and a second poll for the boot to finish.
 Three diagrams show the same real flow three different ways.
 
-Timeline lays the same real waits out on one shared axis, one row per
-actor: kernel, emulator, adb and the temperature watch. A bar is a real
-wait, drawn to scale, a tick is a step that just happens with no duration
-of its own. adb's row carries two bars, the console poll and the boot
-poll, so the same channel used twice reads as two bars in sequence on one
-row, not one wire pulsing twice.
+Sequence draws `start` the way a real sequence diagram does: one lifeline
+per actor, a numbered request arrow and a dotted response for every real
+exchange, with the real message text on each. A poll gets a shaded block
+around its note and its two branches, no answer in time or the real
+answer. `wait-settle` sends no message at all, only a note and its own
+two second bar, since abgal_start:wait_for_console just sleeps and then
+reads its own child process, never the watch itself. Each of the three
+ways `start` can fail shows as a small loop back onto abgal's own
+lifeline, carrying the real words `start` prints for that case.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/start-timeline-dark.svg">
-  <img src="img/start-timeline-light.svg" alt="Four rows, kernel, emulator, adb and the temperature watch, on a shared time axis. A tick on kernel for the preflight check, a tick on emulator for launch, a bar on adb up to 300 seconds for the console poll, a tick then a bar on the temperature watch for starting it and the two second settle wait, and a second bar on adb up to 300 seconds for the boot poll.">
+  <source media="(prefers-color-scheme: dark)" srcset="img/start-sequence-dark.svg">
+  <img src="img/start-sequence-light.svg" alt="A lifeline for abgal start, kernel, emulator, adb and the temperature watch. Numbered request and response arrows for preflight, launch, and starting the temperature watch. A shaded block around the console poll and the boot poll, each with a branch for no answer in time and a branch for the real answer. A rose block for the two second settle wait, a note and a bar only, no arrow. A small loop on abgal's own lifeline for each of the three ways start can fail. A green banner for ready at the end.">
 </picture>
 
 Swimlane lays the same real sequence out against a shared time axis, one
