@@ -11,6 +11,7 @@ Schritten von einem frischen Klon zu einem laufenden Android Virtual Device
 | [Vorlagen](templates.md) | du einen anderen Bildschirm, eine andere Android Version oder Speichergröße willst |
 | [Wie es funktioniert](how-it-works.md) | ein Befehl etwas getan hat, das du nicht erwartet hast |
 | [Fehlerbehebung](troubleshooting.md) | ein Befehl mit `ERROR` geendet hat |
+| [Ansicht und Steuerung aus dem Browser](view-service.de.md) | du die Web-Oberfläche nutzen oder verstehen willst, wie sie heute funktioniert |
 | [Dashboard Design](dashboard-design.de.md) | du das Ziellayout der Web-Oberfläche kennen willst |
 
 ## Das Leben eines AVD
