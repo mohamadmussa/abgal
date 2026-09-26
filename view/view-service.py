@@ -200,6 +200,8 @@ PAGE = """<!doctype html>
   .pill.running { background:rgba(76,175,125,.18); color:var(--ok); }
   .pill.booting { background:rgba(217,164,65,.18); color:var(--warn); }
   .pill.stopped, .pill.unknown { background:rgba(107,114,128,.2); color:var(--off); }
+  #debug-log { margin:0; max-height:220px; overflow-y:auto; font:11px/1.4 ui-monospace,monospace;
+               color:var(--muted); white-space:pre-wrap; word-break:break-all; }
 </style>
 
 <header id="topbar">
@@ -211,6 +213,12 @@ PAGE = """<!doctype html>
   <fieldset>
     <legend>GUESTS</legend>
     <div id="guest-list" style="display:flex; flex-direction:column; gap:8px"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>DEBUG</legend>
+    <label><input type="checkbox" id="debug-toggle"> show debug output</label>
+    <pre id="debug-log" hidden></pre>
   </fieldset>
 </nav>
 
@@ -271,10 +279,24 @@ const statusEl = document.getElementById("status");
 const frameTimeEl = document.getElementById("frame-time");
 const freeMemEl = document.getElementById("free-mem");
 const autoRefresh = document.getElementById("auto-refresh");
+const debugToggle = document.getElementById("debug-toggle");
+const debugLogEl = document.getElementById("debug-log");
 let step = 2, loading = false, lastMs = 0, selected = null;
-let lastRows = [], expanded = new Set();
+let lastRows = [], expanded = new Set(), debugLines = [];
 
 function report(t) { statusEl.textContent = t; }
+
+function debugLog(line) {
+  const stamp = new Date().toISOString().split("T")[1].replace("Z", "");
+  debugLines.push(stamp + "  " + line);
+  if (debugLines.length > 80) debugLines.shift();
+  if (debugToggle.checked) debugLogEl.textContent = debugLines.join("\\n");
+}
+
+debugToggle.addEventListener("change", () => {
+  debugLogEl.hidden = !debugToggle.checked;
+  if (debugToggle.checked) debugLogEl.textContent = debugLines.join("\\n");
+});
 
 function pillState(g) {
   if (!g.pid) return "stopped";
@@ -347,8 +369,10 @@ async function refreshGuests() {
     placeholder.classList.toggle("visible", !selected);
     freeMemEl.textContent = "free: " + data.free_mb + " MB";
     renderGuests(data.guests);
+    debugLog("GET guests -> " + data.guests.length + " row(s), free_mb=" + data.free_mb);
   } catch (e) {
     report("error: " + e.message);
+    debugLog("GET guests failed: " + e.message);
   }
 }
 
@@ -360,10 +384,12 @@ async function selectGuest(name) {
       body: JSON.stringify({ name })
     });
     if (!a.ok) throw new Error(await a.text());
+    debugLog("POST switch " + name + " -> ok");
     await refreshGuests();
     fetchFrame();
   } catch (e) {
     report("error: " + e.message);
+    debugLog("POST switch " + name + " failed: " + e.message);
   }
 }
 
@@ -379,8 +405,10 @@ async function fetchFrame() {
     if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
     lastMs = Math.round(performance.now() - start);
     frameTimeEl.textContent = lastMs + " ms per frame";
+    debugLog("GET frame.png?s=" + step + " -> " + lastMs + " ms");
   } catch (e) {
     report("error: " + e.message);
+    debugLog("GET frame.png failed: " + e.message);
   } finally {
     loading = false;
   }
@@ -394,9 +422,11 @@ async function send(route, data) {
       body: JSON.stringify(data)
     });
     if (!a.ok) throw new Error(await a.text());
+    debugLog("POST " + route + " " + JSON.stringify(data) + " -> ok");
     setTimeout(fetchFrame, 350);
   } catch (e) {
     report("error: " + e.message);
+    debugLog("POST " + route + " " + JSON.stringify(data) + " failed: " + e.message);
   }
 }
 
