@@ -307,6 +307,9 @@ PAGE = """<!doctype html>
       <button data-key="ENTER">ENTER</button>
       <button data-key="DEL">DEL</button>
       <button data-key="TAB">TAB</button>
+      <button data-key="SEARCH">SEARCH</button>
+      <button data-key="VOLUME_UP">VOLUME_UP</button>
+      <button data-key="VOLUME_DOWN">VOLUME_DOWN</button>
     </div>
   </fieldset>
 
