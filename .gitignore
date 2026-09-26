@@ -30,6 +30,7 @@ app.conf
 !docs/how-it-works.de.md
 !docs/troubleshooting.de.md
 !docs/dashboard-design.de.md
+!docs/view-service.de.md
 
 # Local files and folders of any kind.
 *.local.*
