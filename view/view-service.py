@@ -128,14 +128,27 @@ def guest_action(name, action):
     """Runs abgal start, stop or restart for one guest, blocking.
 
     Raises with abgal's own stderr on failure, so the page can show the
-    real reason instead of a generic error. Timeouts are generous because
-    a start takes about fifty seconds and a stop up to forty, see
-    docs/how-it-works.md.
+    real reason instead of a generic error. abgal itself waits up to
+    --timeout (default 300 s) for the console and again up to --timeout
+    for boot, one after another, so a start is passed the same --timeout
+    explicitly and our own subprocess timeout is set well above both
+    waits combined. A stop needs far less, abgal's own steps are a 20 s
+    grace period, then a 10 s SIGTERM wait and a 10 s SIGKILL wait, see
+    abgal's start_one() and stop_one(). A subprocess timeout is turned
+    into its own message rather than passed on as is, because its text
+    otherwise repeats the absolute path to abgal from argv.
     """
-    def run(verb, timeout):
-        result = subprocess.run(
-            [str(ABGAL), verb, "-n", name], capture_output=True, timeout=timeout,
-        )
+    def run(extra_args, timeout):
+        try:
+            result = subprocess.run(
+                [str(ABGAL), *extra_args, "-n", name],
+                capture_output=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                "abgal %s did not answer within %d s, %s may still be under way"
+                % (extra_args[0], timeout, name)
+            )
         if result.returncode != 0:
             raise RuntimeError(
                 result.stderr.decode("utf-8", "replace").strip()
@@ -143,12 +156,12 @@ def guest_action(name, action):
             )
 
     if action == "start":
-        run("start", 90)
+        run(["start", "--timeout", "300"], 610)
     elif action == "stop":
-        run("stop", 60)
+        run(["stop"], 60)
     elif action == "restart":
-        run("stop", 60)
-        run("start", 90)
+        run(["stop"], 60)
+        run(["start", "--timeout", "300"], 610)
     else:
         raise ValueError("unknown action: " + action)
 
@@ -730,10 +743,11 @@ class Handler(BaseHTTPRequestHandler):
         self.respond(200, "application/json", '{"ok":true}')
 
     def lifecycle(self, name, action):
-        """Starts, stops or restarts one guest, then clears the selection
+        """Starts, stops or restarts one guest.
 
-        if the guest a viewer was watching just stopped, so the page falls
-        back to the placeholder instead of polling a dead serial.
+        If the guest a viewer was watching just stopped or restarted, the
+        selection is cleared too, so the page falls back to the
+        placeholder instead of polling a dead serial.
         """
         if action not in ("start", "stop", "restart"):
             return self.respond(400, "text/plain; charset=utf-8", "unknown action")
