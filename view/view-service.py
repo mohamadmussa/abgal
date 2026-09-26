@@ -144,14 +144,22 @@ PAGE = """<!doctype html>
 <style>
   :root { color-scheme: dark; --bg:#16181d; --field:#20242c; --border:#333944;
           --text:#e6e9ef; --muted:#9aa3b2; --accent:#5b9cf8;
-          --ok:#4caf7d; --warn:#d9a441; --off:#6b7280; }
+          --ok:#4caf7d; --warn:#d9a441; --off:#6b7280; --bad:#e0605a;
+          --left-w:260px; --right-w:260px; }
   * { box-sizing:border-box; }
   html, body { height:100%; }
   body { margin:0; background:var(--bg); color:var(--text);
          font:14px/1.5 system-ui,sans-serif; display:grid; gap:16px; padding:16px;
-         grid-template-columns:260px minmax(0,1fr) 260px;
+         grid-template-columns:var(--left-w) 6px minmax(0,1fr) 6px var(--right-w);
          grid-template-rows:auto minmax(0,1fr);
-         grid-template-areas:"header header header" "guests screen controls"; }
+         grid-template-areas:"header header header header header"
+                              "guests lresize screen rresize controls"; }
+  .resizer { cursor:col-resize; position:relative; }
+  .resizer::after { content:""; position:absolute; top:0; bottom:0; left:2px;
+                     width:2px; background:var(--border); border-radius:1px; }
+  .resizer:hover::after { background:var(--accent); }
+  #lresize { grid-area:lresize; }
+  #rresize { grid-area:rresize; }
   #topbar { grid-area:header; display:flex; justify-content:space-between;
             background:var(--field); border:1px solid var(--border);
             border-radius:10px; padding:8px 14px; color:var(--muted);
@@ -196,10 +204,10 @@ PAGE = """<!doctype html>
   .details { display:none; flex-direction:column; gap:2px; color:var(--muted);
              font-size:12px; padding:2px 8px 4px; }
   .details.open { display:flex; }
-  .pill { flex:none; font-size:11px; padding:1px 7px; border-radius:99px; white-space:nowrap; }
-  .pill.running { background:rgba(76,175,125,.18); color:var(--ok); }
-  .pill.booting { background:rgba(217,164,65,.18); color:var(--warn); }
-  .pill.stopped, .pill.unknown { background:rgba(107,114,128,.2); color:var(--off); }
+  .pill { flex:none; width:9px; height:9px; border-radius:50%; }
+  .pill.running { background:var(--ok); }
+  .pill.booting { background:var(--warn); }
+  .pill.stopped, .pill.unknown { background:var(--bad); }
   #debug-log { margin:0; max-height:220px; overflow-y:auto; font:11px/1.4 ui-monospace,monospace;
                color:var(--muted); white-space:pre-wrap; word-break:break-all; }
 </style>
@@ -212,7 +220,8 @@ PAGE = """<!doctype html>
 <nav id="guests">
   <fieldset>
     <legend>GUESTS</legend>
-    <div id="guest-list" style="display:flex; flex-direction:column; gap:8px"></div>
+    <div id="guest-list"
+         style="display:flex; flex-direction:column; gap:8px; max-height:38vh; overflow-y:auto"></div>
   </fieldset>
 
   <fieldset>
@@ -222,10 +231,14 @@ PAGE = """<!doctype html>
   </fieldset>
 </nav>
 
+<div id="lresize" class="resizer"></div>
+
 <div id="screen-wrap">
   <img id="screen" alt="emulator screen" hidden>
   <div id="placeholder" class="visible">Select a guest from the list on the left.</div>
 </div>
+
+<div id="rresize" class="resizer"></div>
 
 <aside>
   <fieldset>
@@ -325,7 +338,7 @@ function renderGuests(rows) {
 
     const pill = document.createElement("span");
     pill.className = "pill " + state;
-    pill.textContent = state;
+    pill.title = state;
 
     const arrow = document.createElement("button");
     arrow.className = "expand" + (expanded.has(g.name) ? " open" : "");
@@ -475,6 +488,30 @@ document.getElementById("word").addEventListener("keydown", (e) => {
   send("text", { word: e.target.value });
   e.target.value = "";
 });
+
+// Drags a sidebar's grid track width via a CSS custom property. "left"
+// widens as the pointer moves right, "right" widens as it moves left.
+function makeResizer(handle, cssVar, side) {
+  handle.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = parseInt(getComputedStyle(document.documentElement)
+                            .getPropertyValue(cssVar), 10);
+    function onMove(ev) {
+      const delta = side === "left" ? ev.clientX - startX : startX - ev.clientX;
+      const next = Math.max(160, Math.min(480, startW + delta));
+      document.documentElement.style.setProperty(cssVar, next + "px");
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+makeResizer(document.getElementById("lresize"), "--left-w", "left");
+makeResizer(document.getElementById("rresize"), "--right-w", "right");
 
 (async function loop() {
   for (;;) {
