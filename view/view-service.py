@@ -124,6 +124,35 @@ def guest_rows():
     return guest_status()["guests"]
 
 
+def guest_action(name, action):
+    """Runs abgal start, stop or restart for one guest, blocking.
+
+    Raises with abgal's own stderr on failure, so the page can show the
+    real reason instead of a generic error. Timeouts are generous because
+    a start takes about fifty seconds and a stop up to forty, see
+    docs/how-it-works.md.
+    """
+    def run(verb, timeout):
+        result = subprocess.run(
+            [str(ABGAL), verb, "-n", name], capture_output=True, timeout=timeout,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                result.stderr.decode("utf-8", "replace").strip()
+                or result.stdout.decode("utf-8", "replace").strip()
+            )
+
+    if action == "start":
+        run("start", 90)
+    elif action == "stop":
+        run("stop", 60)
+    elif action == "restart":
+        run("stop", 60)
+        run("start", 90)
+    else:
+        raise ValueError("unknown action: " + action)
+
+
 def png(width, height, rows):
     def chunk(kind, data):
         body = kind + data
@@ -208,6 +237,9 @@ PAGE = """<!doctype html>
   .pill.running { background:var(--ok); }
   .pill.booting { background:var(--warn); }
   .pill.stopped, .pill.unknown { background:var(--bad); }
+  .details .actions { display:flex; gap:6px; margin-top:2px; }
+  .details .actions button { padding:4px 8px; font-size:11px; }
+  .details .actions span { color:var(--warn); }
   #debug-log { margin:0; max-height:220px; overflow-y:auto; font:11px/1.4 ui-monospace,monospace;
                color:var(--muted); white-space:pre-wrap; word-break:break-all; }
 </style>
@@ -296,6 +328,7 @@ const debugToggle = document.getElementById("debug-toggle");
 const debugLogEl = document.getElementById("debug-log");
 let step = 2, loading = false, lastMs = 0, selected = null;
 let lastRows = [], expanded = new Set(), debugLines = [];
+const pending = new Map();
 
 function report(t) { statusEl.textContent = t; }
 
@@ -367,6 +400,29 @@ function renderGuests(rows) {
       details.appendChild(line);
     }
 
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const busy = pending.get(g.name);
+    if (busy) {
+      const span = document.createElement("span");
+      span.textContent = busy + "…";
+      actions.appendChild(span);
+    } else {
+      const hasPid = !!g.pid;
+      for (const [label, action, disabled] of [
+        ["Start", "start", hasPid],
+        ["Stop", "stop", !hasPid],
+        ["Restart", "restart", !hasPid],
+      ]) {
+        const btn = document.createElement("button");
+        btn.textContent = label;
+        btn.disabled = disabled;
+        btn.onclick = () => runLifecycle(g.name, action, label.toLowerCase());
+        actions.appendChild(btn);
+      }
+    }
+    details.appendChild(actions);
+
     row.append(top, details);
     guestList.appendChild(row);
   }
@@ -403,6 +459,27 @@ async function selectGuest(name) {
   } catch (e) {
     report("error: " + e.message);
     debugLog("POST switch " + name + " failed: " + e.message);
+  }
+}
+
+async function runLifecycle(name, action, verb) {
+  pending.set(name, verb);
+  renderGuests(lastRows);
+  try {
+    const a = await fetch("lifecycle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, action })
+    });
+    if (!a.ok) throw new Error(await a.text());
+    debugLog("POST lifecycle " + action + " " + name + " -> ok");
+    report(name + ": " + action + " ok");
+  } catch (e) {
+    report(name + " " + action + " failed: " + e.message);
+    debugLog("POST lifecycle " + action + " " + name + " failed: " + e.message);
+  } finally {
+    pending.delete(name);
+    await refreshGuests();
   }
 }
 
@@ -586,6 +663,9 @@ class Handler(BaseHTTPRequestHandler):
             if p == "switch":
                 return self.switch_guest(data.get("name"))
 
+            if p == "lifecycle":
+                return self.lifecycle(data.get("name"), data.get("action"))
+
             if self.server.device is None:
                 return self.respond(409, "text/plain; charset=utf-8", "no guest selected")
             d = self.server.device
@@ -647,6 +727,23 @@ class Handler(BaseHTTPRequestHandler):
                                 "guest is not ready to view: " + str(found["adb"]))
         self.server.device = Device(found["serial"], self.server.step)
         self.server.selected = name
+        self.respond(200, "application/json", '{"ok":true}')
+
+    def lifecycle(self, name, action):
+        """Starts, stops or restarts one guest, then clears the selection
+
+        if the guest a viewer was watching just stopped, so the page falls
+        back to the placeholder instead of polling a dead serial.
+        """
+        if action not in ("start", "stop", "restart"):
+            return self.respond(400, "text/plain; charset=utf-8", "unknown action")
+        try:
+            guest_action(name, action)
+        except Exception as e:
+            return self.respond(500, "text/plain; charset=utf-8", str(e))
+        if action in ("stop", "restart") and self.server.selected == name:
+            self.server.device = None
+            self.server.selected = None
         self.respond(200, "application/json", '{"ok":true}')
 
     def log_message(self, *_):
