@@ -77,9 +77,8 @@ HALF und SMALL, dazu NOW für einen einzelnen Abruf außerhalb der
 Neulade-Schleife. Die Kopfzeile über der Seite zeigt die Abrufzeit des
 letzten Bilds und den freien Speicher des Hosts.
 
-**KEYS** hat je einen Knopf für BACK, HOME, APP_SWITCH, ENTER, DEL und TAB.
-Der Server nimmt auch SEARCH, VOLUME_UP und VOLUME_DOWN an, dafür hat die
-Seite aber noch keinen Knopf. Die ganze Menge ist bewusst fest, damit die
+**KEYS** hat je einen Knopf für BACK, HOME, APP_SWITCH, ENTER, DEL, TAB,
+SEARCH, VOLUME_UP und VOLUME_DOWN. Die Menge ist bewusst fest, damit die
 Seite nicht mitten im Test POWER oder SLEEP schicken kann.
 
 **SWIPE** schickt einen Wisch von der Bildschirmmitte zu einem Rand.
