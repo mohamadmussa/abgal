@@ -9,6 +9,7 @@ comes after.
 | [Templates](templates.md) | you want another screen, Android version or memory size |
 | [How it works](how-it-works.md) | a command did something you did not expect |
 | [Troubleshooting](troubleshooting.md) | a command ended with `ERROR` |
+| [Dashboard design](dashboard-design.md) | you want to know the web UI's target layout |
 
 ## A guest's life
 
