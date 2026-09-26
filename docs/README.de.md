@@ -1,5 +1,7 @@
 # Der AbGal Guide
 
+*[In English](README.md)*
+
 Fang mit dem [Schnellstart](../README.md#quick-start) an. Er bringt dich in vier
 Schritten von einem frischen Klon zu einem laufenden Android Virtual Device
 (AVD). Die Seiten hier sind für das, was danach kommt.

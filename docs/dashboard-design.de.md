@@ -1,5 +1,7 @@
 # Dashboard Design
 
+*[In English](dashboard-design.md)*
+
 `view/view-service.py` liefert heute eine schlichte dreispaltige Seite aus:
 eine Liste der Android Virtual Devices (AVDs), einen Live-Bildschirm und ein
 Bedienfeld. Diese Seite beschreibt das Ziellayout für diese Seite, ein

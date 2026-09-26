@@ -1,5 +1,7 @@
 # Wie es funktioniert
 
+*[In English](how-it-works.md)*
+
 Diese Seite begleitet ein Android Virtual Device (AVD) von der Zeile in
 `devices.conf` bis zum gestoppten Prozess und nennt für jeden Schritt die Datei
 oder Funktion, die ihn macht. Lies sie, wenn ein Befehl etwas getan hat, das du
