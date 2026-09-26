@@ -11,6 +11,7 @@ comes after.
 | [Templates](templates.md) | you want another screen, Android version or memory size |
 | [How it works](how-it-works.md) | a command did something you did not expect |
 | [Troubleshooting](troubleshooting.md) | a command ended with `ERROR` |
+| [View and control from a browser](view-service.md) | you want to use or understand the web UI as it works today |
 | [Dashboard design](dashboard-design.md) | you want to know the web UI's target layout |
 
 ## A guest's life
