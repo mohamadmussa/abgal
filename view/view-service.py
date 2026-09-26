@@ -132,11 +132,12 @@ def guest_action(name, action):
     --timeout (default 300 s) for the console and again up to --timeout
     for boot, one after another, so a start is passed the same --timeout
     explicitly and our own subprocess timeout is set well above both
-    waits combined. A stop needs far less, abgal's own steps are a 20 s
-    grace period, then a 10 s SIGTERM wait and a 10 s SIGKILL wait, see
-    abgal's start_one() and stop_one(). A subprocess timeout is turned
-    into its own message rather than passed on as is, because its text
-    otherwise repeats the absolute path to abgal from argv.
+    waits combined. A stop needs far less, abgal's own steps there are a
+    20 s wait for "adb emu kill" to answer, then a 20 s grace period, a
+    10 s SIGTERM wait and a 10 s SIGKILL wait, 60 s in the worst case,
+    see abgal's start_one() and stop_one(). A subprocess timeout is
+    turned into its own message rather than passed on as is, because its
+    text otherwise repeats the absolute path to abgal from argv.
     """
     def run(extra_args, timeout):
         try:
@@ -158,9 +159,9 @@ def guest_action(name, action):
     if action == "start":
         run(["start", "--timeout", "300"], 610)
     elif action == "stop":
-        run(["stop"], 60)
+        run(["stop"], 75)
     elif action == "restart":
-        run(["stop"], 60)
+        run(["stop"], 75)
         run(["start", "--timeout", "300"], 610)
     else:
         raise ValueError("unknown action: " + action)
