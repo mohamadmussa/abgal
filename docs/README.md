@@ -1,5 +1,7 @@
 # The AbGal guide
 
+*[Auf Deutsch](README.de.md)*
+
 Start with the [quick start](../README.md#quick-start). It takes you from a
 fresh clone to a running guest in four steps. The pages here are for what
 comes after.

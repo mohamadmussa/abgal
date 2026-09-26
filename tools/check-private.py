@@ -42,7 +42,15 @@ UMLAUT_LABEL = "non English letter"
 # suffix. Every other .de.md file stays local per .gitignore and is never
 # staged, so widening this to every *.de.md path would only ever weaken the
 # check for a file that should not exist in a commit in the first place.
-UMLAUT_EXEMPT_PATHS = {"docs/architecture.de.md"}
+UMLAUT_EXEMPT_PATHS = {
+    "docs/architecture.de.md",
+    "docs/README.de.md",
+    "docs/templates.de.md",
+    "docs/how-it-works.de.md",
+    "docs/troubleshooting.de.md",
+    "docs/dashboard-design.de.md",
+    "docs/view-service.de.md",
+}
 
 # Structural patterns. These describe a shape, not a value, so the list is
 # safe to publish. Anything that is a literal belongs in .private-words.

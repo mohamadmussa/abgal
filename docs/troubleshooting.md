@@ -1,5 +1,7 @@
 # Troubleshooting
 
+*[Auf Deutsch](troubleshooting.de.md)*
+
 Each section starts with what AbGal prints. Search this page for the first
 words of your error.
 
