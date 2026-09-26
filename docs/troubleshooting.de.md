@@ -1,5 +1,7 @@
 # Fehlerbehebung
 
+*[In English](troubleshooting.md)*
+
 Jeder Abschnitt beginnt mit dem, was AbGal ausgibt. Such auf dieser Seite nach
 den ersten Wörtern deines Fehlers.
 

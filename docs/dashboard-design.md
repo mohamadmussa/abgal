@@ -1,5 +1,7 @@
 # Dashboard design
 
+*[Auf Deutsch](dashboard-design.de.md)*
+
 `view/view-service.py` serves a small three column page today: a guest list,
 a live screen, and a control panel. This page describes the target layout for
 that page, a full dashboard, agreed as the picture to build towards. It is not

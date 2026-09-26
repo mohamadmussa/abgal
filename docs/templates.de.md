@@ -1,5 +1,7 @@
 # Vorlagen
 
+*[In English](templates.md)*
+
 Eine Vorlage ist eine Zeile in `devices.conf`. Sie beschreibt eine Klasse von
 Gerät, und jedes Android Virtual Device (AVD) daraus bekommt denselben
 Bildschirm, dieselbe Android Version, dasselbe Systemabbild und denselben

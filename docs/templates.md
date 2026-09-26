@@ -1,5 +1,7 @@
 # Templates
 
+*[Auf Deutsch](templates.de.md)*
+
 A template is one line in `devices.conf`. It describes a class of device, and
 every guest created from it gets the same screen, Android version, system image
 and memory. This page explains the line, what `create` makes of it, and how to
