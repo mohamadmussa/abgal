@@ -142,18 +142,23 @@ PAGE = """<!doctype html>
           --text:#e6e9ef; --muted:#9aa3b2; --accent:#5b9cf8;
           --ok:#4caf7d; --warn:#d9a441; --off:#6b7280; }
   * { box-sizing:border-box; }
+  html, body { height:100%; }
   body { margin:0; background:var(--bg); color:var(--text);
-         font:14px/1.5 system-ui,sans-serif; display:flex; gap:20px;
-         padding:20px; flex-wrap:wrap; }
-  #screen-wrap { position:relative; max-height:88vh; }
+         font:14px/1.5 system-ui,sans-serif; display:grid; gap:16px; padding:16px;
+         grid-template-columns:260px minmax(0,1fr) 260px;
+         grid-template-areas:"guests screen controls"; }
+  nav#guests { grid-area:guests; min-width:0; overflow-y:auto;
+               display:flex; flex-direction:column; gap:14px; }
+  aside { grid-area:controls; min-width:0; overflow-y:auto;
+          display:flex; flex-direction:column; gap:14px; }
+  #screen-wrap { grid-area:screen; position:relative; min-width:0; min-height:0;
+                 display:flex; align-items:flex-start; justify-content:center; }
   #screen { border:1px solid var(--border); border-radius:10px; cursor:crosshair;
-          max-height:88vh; background:#000; display:block; }
+          max-width:100%; max-height:100%; background:#000; display:block; }
   #placeholder { position:absolute; inset:0; display:none; align-items:center;
           justify-content:center; color:var(--muted); border:1px dashed var(--border);
-          border-radius:10px; min-width:320px; min-height:200px; text-align:center;
-          padding:20px; }
+          border-radius:10px; text-align:center; padding:20px; }
   #placeholder.visible { display:flex; }
-  nav#guests, aside { min-width:230px; display:flex; flex-direction:column; gap:14px; }
   fieldset { border:1px solid var(--border); border-radius:10px; padding:12px;
              margin:0; }
   legend { color:var(--muted); padding:0 6px; font-size:12px;
