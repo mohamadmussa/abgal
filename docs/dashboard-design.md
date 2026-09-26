@@ -17,10 +17,10 @@ shape as the page grows
 ## Where the reference lives
 
 A high fidelity click through prototype, with simulated data, shows every
-screen and interaction. It lives outside the tracked tree as a design
-reference, next to this file's author, and is not shipped as is: the real
-page stays plain HTML, CSS and JS with no build step, served by the existing
-`Handler`, matching how `view-service.py` already works.
+screen and interaction. It stays local, not tracked in this repository, and
+is not shipped as is: the real page stays plain HTML, CSS and JS with no
+build step, served by the existing `Handler`, matching how
+`view-service.py` already works.
 
 ## Layout
 
