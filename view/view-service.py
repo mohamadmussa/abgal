@@ -148,10 +148,11 @@ PAGE = """<!doctype html>
   #screen-wrap { position:relative; max-height:88vh; }
   #screen { border:1px solid var(--border); border-radius:10px; cursor:crosshair;
           max-height:88vh; background:#000; display:block; }
-  #placeholder { position:absolute; inset:0; display:flex; align-items:center;
+  #placeholder { position:absolute; inset:0; display:none; align-items:center;
           justify-content:center; color:var(--muted); border:1px dashed var(--border);
           border-radius:10px; min-width:320px; min-height:200px; text-align:center;
           padding:20px; }
+  #placeholder.visible { display:flex; }
   nav#guests, aside { min-width:230px; display:flex; flex-direction:column; gap:14px; }
   fieldset { border:1px solid var(--border); border-radius:10px; padding:12px;
              margin:0; }
@@ -190,7 +191,7 @@ PAGE = """<!doctype html>
 
 <div id="screen-wrap">
   <img id="screen" alt="emulator screen" hidden>
-  <div id="placeholder">Select a guest from the list on the left.</div>
+  <div id="placeholder" class="visible">Select a guest from the list on the left.</div>
 </div>
 
 <aside>
@@ -294,7 +295,7 @@ async function refreshGuests() {
     const data = await a.json();
     selected = data.selected;
     img.hidden = !selected;
-    placeholder.hidden = !!selected;
+    placeholder.classList.toggle("visible", !selected);
     renderGuests(data.guests);
   } catch (e) {
     report("error: " + e.message);
