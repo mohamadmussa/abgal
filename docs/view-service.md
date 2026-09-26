@@ -71,9 +71,10 @@ SMALL, plus NOW for a single fetch outside the refresh loop. The top bar
 above the page shows the last frame's fetch time and the host's free
 memory.
 
-**KEYS** sends one of a fixed set of key events, BACK, HOME, APP_SWITCH,
-ENTER, DEL, TAB, SEARCH, VOLUME_UP and VOLUME_DOWN. The set is fixed on
-purpose so the page cannot send POWER or SLEEP mid test.
+**KEYS** has one button each for BACK, HOME, APP_SWITCH, ENTER, DEL and
+TAB. The server also accepts SEARCH, VOLUME_UP and VOLUME_DOWN, but the
+page has no button for them yet. The whole set is fixed on purpose so the
+page cannot send POWER or SLEEP mid test.
 
 **SWIPE** sends a swipe from the middle of the screen toward one edge.
 
