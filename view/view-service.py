@@ -105,11 +105,11 @@ class Device:
         return self.width, self.height
 
 
-def guest_rows():
-    """Every guest abgal knows about, straight from "abgal status --json".
+def guest_status():
+    """The whole "abgal status --json" payload: free_mb plus every guest.
 
-    Guest listing, pid and adb state live in abgal, see docs/architecture.md,
-    this only parses what it already computed.
+    Guest listing, pid, adb state and free_mb live in abgal, see
+    docs/architecture.md, this only parses what it already computed.
     """
     result = subprocess.run(
         [str(ABGAL), "status", "--json"],
@@ -117,7 +117,11 @@ def guest_rows():
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.decode("utf-8", "replace").strip())
-    return json.loads(result.stdout)["guests"]
+    return json.loads(result.stdout)
+
+
+def guest_rows():
+    return guest_status()["guests"]
 
 
 def png(width, height, rows):
@@ -140,19 +144,38 @@ PAGE = """<!doctype html>
 <style>
   :root { color-scheme: dark; --bg:#16181d; --field:#20242c; --border:#333944;
           --text:#e6e9ef; --muted:#9aa3b2; --accent:#5b9cf8;
-          --ok:#4caf7d; --warn:#d9a441; --off:#6b7280; }
+          --ok:#4caf7d; --warn:#d9a441; --off:#6b7280; --bad:#e0605a;
+          --left-w:260px; --right-w:260px; }
   * { box-sizing:border-box; }
+  html, body { height:100%; }
   body { margin:0; background:var(--bg); color:var(--text);
-         font:14px/1.5 system-ui,sans-serif; display:flex; gap:20px;
-         padding:20px; flex-wrap:wrap; }
-  #screen-wrap { position:relative; max-height:88vh; }
+         font:14px/1.5 system-ui,sans-serif; display:grid; gap:16px; padding:16px;
+         grid-template-columns:var(--left-w) 6px minmax(0,1fr) 6px var(--right-w);
+         grid-template-rows:auto minmax(0,1fr);
+         grid-template-areas:"header header header header header"
+                              "guests lresize screen rresize controls"; }
+  .resizer { cursor:col-resize; position:relative; }
+  .resizer::after { content:""; position:absolute; top:0; bottom:0; left:2px;
+                     width:2px; background:var(--border); border-radius:1px; }
+  .resizer:hover::after { background:var(--accent); }
+  #lresize { grid-area:lresize; }
+  #rresize { grid-area:rresize; }
+  #topbar { grid-area:header; display:flex; justify-content:space-between;
+            background:var(--field); border:1px solid var(--border);
+            border-radius:10px; padding:8px 14px; color:var(--muted);
+            font-size:13px; font-variant-numeric:tabular-nums; }
+  nav#guests { grid-area:guests; min-width:0; overflow-y:auto;
+               display:flex; flex-direction:column; gap:14px; }
+  aside { grid-area:controls; min-width:0; overflow-y:auto;
+          display:flex; flex-direction:column; gap:14px; }
+  #screen-wrap { grid-area:screen; position:relative; min-width:0; min-height:0;
+                 display:flex; align-items:flex-start; justify-content:center; }
   #screen { border:1px solid var(--border); border-radius:10px; cursor:crosshair;
-          max-height:88vh; background:#000; display:block; }
-  #placeholder { position:absolute; inset:0; display:flex; align-items:center;
+          max-width:100%; max-height:100%; background:#000; display:block; }
+  #placeholder { position:absolute; inset:0; display:none; align-items:center;
           justify-content:center; color:var(--muted); border:1px dashed var(--border);
-          border-radius:10px; min-width:320px; min-height:200px; text-align:center;
-          padding:20px; }
-  nav#guests, aside { min-width:230px; display:flex; flex-direction:column; gap:14px; }
+          border-radius:10px; text-align:center; padding:20px; }
+  #placeholder.visible { display:flex; }
   fieldset { border:1px solid var(--border); border-radius:10px; padding:12px;
              margin:0; }
   legend { color:var(--muted); padding:0 6px; font-size:12px;
@@ -166,32 +189,56 @@ PAGE = """<!doctype html>
                      border-radius:8px; padding:8px; }
   label { color:var(--muted); display:flex; align-items:center; gap:8px; }
   #status { color:var(--muted); font-size:12px; min-height:1.4em; }
-  .guest { display:flex; flex-direction:column; gap:4px; text-align:left;
+  .guest { display:flex; flex-direction:column; gap:4px; min-width:0;
            background:var(--field); border:1px solid var(--border); border-radius:8px;
-           padding:8px 10px; cursor:pointer; font:inherit; color:var(--text); }
-  .guest:hover:not(:disabled) { border-color:var(--accent); }
-  .guest:disabled { cursor:not-allowed; opacity:.55; }
+           padding:8px 10px; }
   .guest.selected { border-color:var(--accent); background:#1c2636; }
-  .guest .top { display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
-  .guest .name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .guest .meta { color:var(--muted); font-size:12px; display:flex; justify-content:space-between; }
-  .pill { font-size:11px; padding:1px 7px; border-radius:99px; white-space:nowrap; }
-  .pill.running { background:rgba(76,175,125,.18); color:var(--ok); }
-  .pill.booting { background:rgba(217,164,65,.18); color:var(--warn); }
-  .pill.stopped, .pill.unknown { background:rgba(107,114,128,.2); color:var(--off); }
+  .guest .top { display:flex; justify-content:space-between; gap:6px; align-items:center;
+                min-width:0; }
+  .device-btn { flex:1; min-width:0; text-align:left; overflow:hidden;
+                text-overflow:ellipsis; white-space:nowrap; font-weight:600;
+                padding:4px 8px; }
+  .device-btn:disabled { cursor:not-allowed; opacity:.55; }
+  .expand { flex:none; padding:4px 6px; color:var(--muted); font-size:11px; line-height:1; }
+  .expand.open { color:var(--text); }
+  .details { display:none; flex-direction:column; gap:2px; color:var(--muted);
+             font-size:12px; padding:2px 8px 4px; }
+  .details.open { display:flex; }
+  .pill { flex:none; width:9px; height:9px; border-radius:50%; }
+  .pill.running { background:var(--ok); }
+  .pill.booting { background:var(--warn); }
+  .pill.stopped, .pill.unknown { background:var(--bad); }
+  #debug-log { margin:0; max-height:220px; overflow-y:auto; font:11px/1.4 ui-monospace,monospace;
+               color:var(--muted); white-space:pre-wrap; word-break:break-all; }
 </style>
+
+<header id="topbar">
+  <span id="frame-time">- ms per frame</span>
+  <span id="free-mem">free: - MB</span>
+</header>
 
 <nav id="guests">
   <fieldset>
     <legend>GUESTS</legend>
-    <div class="row" id="guest-list" style="flex-direction:column; gap:8px"></div>
+    <div id="guest-list"
+         style="display:flex; flex-direction:column; gap:8px; max-height:38vh; overflow-y:auto"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>DEBUG</legend>
+    <label><input type="checkbox" id="debug-toggle"> show debug output</label>
+    <pre id="debug-log" hidden></pre>
   </fieldset>
 </nav>
 
+<div id="lresize" class="resizer"></div>
+
 <div id="screen-wrap">
   <img id="screen" alt="emulator screen" hidden>
-  <div id="placeholder">Select a guest from the list on the left.</div>
+  <div id="placeholder" class="visible">Select a guest from the list on the left.</div>
 </div>
+
+<div id="rresize" class="resizer"></div>
 
 <aside>
   <fieldset>
@@ -242,10 +289,27 @@ const img = document.getElementById("screen");
 const placeholder = document.getElementById("placeholder");
 const guestList = document.getElementById("guest-list");
 const statusEl = document.getElementById("status");
+const frameTimeEl = document.getElementById("frame-time");
+const freeMemEl = document.getElementById("free-mem");
 const autoRefresh = document.getElementById("auto-refresh");
+const debugToggle = document.getElementById("debug-toggle");
+const debugLogEl = document.getElementById("debug-log");
 let step = 2, loading = false, lastMs = 0, selected = null;
+let lastRows = [], expanded = new Set(), debugLines = [];
 
 function report(t) { statusEl.textContent = t; }
+
+function debugLog(line) {
+  const stamp = new Date().toISOString().split("T")[1].replace("Z", "");
+  debugLines.push(stamp + "  " + line);
+  if (debugLines.length > 80) debugLines.shift();
+  if (debugToggle.checked) debugLogEl.textContent = debugLines.join("\\n");
+}
+
+debugToggle.addEventListener("change", () => {
+  debugLogEl.hidden = !debugToggle.checked;
+  if (debugToggle.checked) debugLogEl.textContent = debugLines.join("\\n");
+});
 
 function pillState(g) {
   if (!g.pid) return "stopped";
@@ -255,35 +319,56 @@ function pillState(g) {
 }
 
 function renderGuests(rows) {
+  lastRows = rows;
   guestList.innerHTML = "";
   for (const g of rows) {
     const state = pillState(g);
-    const b = document.createElement("button");
-    b.className = "guest" + (g.name === selected ? " selected" : "");
-    b.disabled = state !== "running";
-    b.onclick = () => selectGuest(g.name);
+    const row = document.createElement("div");
+    row.className = "guest" + (g.name === selected ? " selected" : "");
 
     const top = document.createElement("div");
     top.className = "top";
-    const name = document.createElement("span");
-    name.className = "name";
-    name.textContent = g.name;
+
+    const deviceBtn = document.createElement("button");
+    deviceBtn.className = "device-btn";
+    deviceBtn.disabled = state !== "running";
+    deviceBtn.textContent = g.serial || g.name;
+    deviceBtn.title = g.name;
+    deviceBtn.onclick = () => selectGuest(g.name);
+
     const pill = document.createElement("span");
     pill.className = "pill " + state;
-    pill.textContent = state;
-    top.append(name, pill);
+    pill.title = state;
 
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    const tmpl = document.createElement("span");
-    tmpl.textContent = g.template;
-    const stats = document.createElement("span");
-    stats.textContent = g.stats
-      ? g.stats.mem_mb + " MB · " + g.stats.cpu_percent + "% CPU" : "";
-    meta.append(tmpl, stats);
+    const arrow = document.createElement("button");
+    arrow.className = "expand" + (expanded.has(g.name) ? " open" : "");
+    arrow.textContent = expanded.has(g.name) ? "v" : ">";
+    arrow.setAttribute("aria-label", "details for " + g.name);
+    arrow.onclick = () => {
+      if (expanded.has(g.name)) expanded.delete(g.name);
+      else expanded.add(g.name);
+      renderGuests(lastRows);
+    };
 
-    b.append(top, meta);
-    guestList.appendChild(b);
+    top.append(deviceBtn, pill, arrow);
+
+    const details = document.createElement("div");
+    details.className = "details" + (expanded.has(g.name) ? " open" : "");
+    for (const [k, v] of [
+      ["name", g.name],
+      ["template", g.template],
+      ["id", g.id],
+      ["adb", g.adb ?? "-"],
+      ["memory", g.stats ? g.stats.mem_mb + " MB" : "-"],
+      ["cpu", g.stats ? g.stats.cpu_percent + "%" : "-"],
+    ]) {
+      const line = document.createElement("div");
+      line.textContent = k + ": " + v;
+      details.appendChild(line);
+    }
+
+    row.append(top, details);
+    guestList.appendChild(row);
   }
 }
 
@@ -294,10 +379,13 @@ async function refreshGuests() {
     const data = await a.json();
     selected = data.selected;
     img.hidden = !selected;
-    placeholder.hidden = !!selected;
+    placeholder.classList.toggle("visible", !selected);
+    freeMemEl.textContent = "free: " + data.free_mb + " MB";
     renderGuests(data.guests);
+    debugLog("GET guests -> " + data.guests.length + " row(s), free_mb=" + data.free_mb);
   } catch (e) {
     report("error: " + e.message);
+    debugLog("GET guests failed: " + e.message);
   }
 }
 
@@ -309,10 +397,12 @@ async function selectGuest(name) {
       body: JSON.stringify({ name })
     });
     if (!a.ok) throw new Error(await a.text());
+    debugLog("POST switch " + name + " -> ok");
     await refreshGuests();
     fetchFrame();
   } catch (e) {
     report("error: " + e.message);
+    debugLog("POST switch " + name + " failed: " + e.message);
   }
 }
 
@@ -327,9 +417,11 @@ async function fetchFrame() {
     img.src = URL.createObjectURL(await a.blob());
     if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
     lastMs = Math.round(performance.now() - start);
-    report(lastMs + " ms per frame");
+    frameTimeEl.textContent = lastMs + " ms per frame";
+    debugLog("GET frame.png?s=" + step + " -> " + lastMs + " ms");
   } catch (e) {
     report("error: " + e.message);
+    debugLog("GET frame.png failed: " + e.message);
   } finally {
     loading = false;
   }
@@ -343,19 +435,42 @@ async function send(route, data) {
       body: JSON.stringify(data)
     });
     if (!a.ok) throw new Error(await a.text());
+    debugLog("POST " + route + " " + JSON.stringify(data) + " -> ok");
     setTimeout(fetchFrame, 350);
   } catch (e) {
     report("error: " + e.message);
+    debugLog("POST " + route + " " + JSON.stringify(data) + " failed: " + e.message);
   }
 }
 
 // The browser sends the fraction, not the pixel. That way the page does not
-// need to know the device resolution or the downscale step.
-img.addEventListener("click", (e) => {
+// need to know the device resolution or the downscale step. A press that
+// releases close to where it started is a tap, a press that moves is a
+// drag, sent as a swipe between the two fractions.
+function fraction(e) {
   const r = img.getBoundingClientRect();
-  send("tap", { ax: (e.clientX - r.left) / r.width,
-                     ay: (e.clientY - r.top) / r.height });
+  return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+}
+
+let dragStart = null;
+
+img.addEventListener("mousedown", (e) => { dragStart = fraction(e); });
+
+img.addEventListener("mouseup", (e) => {
+  if (!dragStart) return;
+  const r = img.getBoundingClientRect();
+  const end = fraction(e);
+  const movedPx = Math.hypot((end.x - dragStart.x) * r.width,
+                              (end.y - dragStart.y) * r.height);
+  if (movedPx < 6) {
+    send("tap", { ax: dragStart.x, ay: dragStart.y });
+  } else {
+    send("swipe", { ax1: dragStart.x, ay1: dragStart.y, ax2: end.x, ay2: end.y });
+  }
+  dragStart = null;
 });
+
+img.addEventListener("mouseleave", () => { dragStart = null; });
 
 document.querySelectorAll("[data-key]").forEach(b =>
   b.onclick = () => send("key", { name: b.dataset.key }));
@@ -373,6 +488,30 @@ document.getElementById("word").addEventListener("keydown", (e) => {
   send("text", { word: e.target.value });
   e.target.value = "";
 });
+
+// Drags a sidebar's grid track width via a CSS custom property. "left"
+// widens as the pointer moves right, "right" widens as it moves left.
+function makeResizer(handle, cssVar, side) {
+  handle.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = parseInt(getComputedStyle(document.documentElement)
+                            .getPropertyValue(cssVar), 10);
+    function onMove(ev) {
+      const delta = side === "left" ? ev.clientX - startX : startX - ev.clientX;
+      const next = Math.max(160, Math.min(480, startW + delta));
+      document.documentElement.style.setProperty(cssVar, next + "px");
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+makeResizer(document.getElementById("lresize"), "--left-w", "left");
+makeResizer(document.getElementById("rresize"), "--right-w", "right");
 
 (async function loop() {
   for (;;) {
@@ -414,8 +553,11 @@ class Handler(BaseHTTPRequestHandler):
             if p in ("", "index.html"):
                 return self.respond(200, "text/html; charset=utf-8", PAGE)
             if p == "guests":
+                payload = guest_status()
                 return self.respond(200, "application/json", json.dumps({
-                    "selected": self.server.selected, "guests": guest_rows(),
+                    "selected": self.server.selected,
+                    "guests": payload["guests"],
+                    "free_mb": payload["free_mb"],
                 }))
             if self.server.device is None:
                 return self.respond(409, "text/plain; charset=utf-8", "no guest selected")
@@ -461,17 +603,24 @@ class Handler(BaseHTTPRequestHandler):
             elif p == "text":
                 d.type_text(str(data["word"])[:200])
             elif p == "swipe":
-                mx, my = width // 2, height // 2
-                reach = height // 3
-                pairs = {
-                    "up":    (mx, my + reach, mx, my - reach),
-                    "down":  (mx, my - reach, mx, my + reach),
-                    "left":  (mx + reach, my, mx - reach, my),
-                    "right": (mx - reach, my, mx + reach, my),
-                }
-                if data["direction"] not in pairs:
-                    return self.respond(400, "text/plain; charset=utf-8", "unknown")
-                d.swipe(*pairs[data["direction"]], 220)
+                if "direction" in data:
+                    mx, my = width // 2, height // 2
+                    reach = height // 3
+                    pairs = {
+                        "up":    (mx, my + reach, mx, my - reach),
+                        "down":  (mx, my - reach, mx, my + reach),
+                        "left":  (mx + reach, my, mx - reach, my),
+                        "right": (mx - reach, my, mx + reach, my),
+                    }
+                    if data["direction"] not in pairs:
+                        return self.respond(400, "text/plain; charset=utf-8", "unknown")
+                    d.swipe(*pairs[data["direction"]], 220)
+                else:
+                    x1 = max(0, min(width - 1, int(float(data["ax1"]) * width)))
+                    y1 = max(0, min(height - 1, int(float(data["ay1"]) * height)))
+                    x2 = max(0, min(width - 1, int(float(data["ax2"]) * width)))
+                    y2 = max(0, min(height - 1, int(float(data["ay2"]) * height)))
+                    d.swipe(x1, y1, x2, y2, 220)
             else:
                 return self.respond(404, "text/plain; charset=utf-8", "unknown")
 
