@@ -105,11 +105,11 @@ class Device:
         return self.width, self.height
 
 
-def guest_rows():
-    """Every guest abgal knows about, straight from "abgal status --json".
+def guest_status():
+    """The whole "abgal status --json" payload: free_mb plus every guest.
 
-    Guest listing, pid and adb state live in abgal, see docs/architecture.md,
-    this only parses what it already computed.
+    Guest listing, pid, adb state and free_mb live in abgal, see
+    docs/architecture.md, this only parses what it already computed.
     """
     result = subprocess.run(
         [str(ABGAL), "status", "--json"],
@@ -117,7 +117,11 @@ def guest_rows():
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.decode("utf-8", "replace").strip())
-    return json.loads(result.stdout)["guests"]
+    return json.loads(result.stdout)
+
+
+def guest_rows():
+    return guest_status()["guests"]
 
 
 def png(width, height, rows):
@@ -146,7 +150,12 @@ PAGE = """<!doctype html>
   body { margin:0; background:var(--bg); color:var(--text);
          font:14px/1.5 system-ui,sans-serif; display:grid; gap:16px; padding:16px;
          grid-template-columns:260px minmax(0,1fr) 260px;
-         grid-template-areas:"guests screen controls"; }
+         grid-template-rows:auto minmax(0,1fr);
+         grid-template-areas:"header header header" "guests screen controls"; }
+  #topbar { grid-area:header; display:flex; justify-content:space-between;
+            background:var(--field); border:1px solid var(--border);
+            border-radius:10px; padding:8px 14px; color:var(--muted);
+            font-size:13px; font-variant-numeric:tabular-nums; }
   nav#guests { grid-area:guests; min-width:0; overflow-y:auto;
                display:flex; flex-direction:column; gap:14px; }
   aside { grid-area:controls; min-width:0; overflow-y:auto;
@@ -172,25 +181,36 @@ PAGE = """<!doctype html>
                      border-radius:8px; padding:8px; }
   label { color:var(--muted); display:flex; align-items:center; gap:8px; }
   #status { color:var(--muted); font-size:12px; min-height:1.4em; }
-  .guest { display:flex; flex-direction:column; gap:4px; text-align:left;
+  .guest { display:flex; flex-direction:column; gap:4px; min-width:0;
            background:var(--field); border:1px solid var(--border); border-radius:8px;
-           padding:8px 10px; cursor:pointer; font:inherit; color:var(--text); }
-  .guest:hover:not(:disabled) { border-color:var(--accent); }
-  .guest:disabled { cursor:not-allowed; opacity:.55; }
+           padding:8px 10px; }
   .guest.selected { border-color:var(--accent); background:#1c2636; }
-  .guest .top { display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
-  .guest .name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .guest .meta { color:var(--muted); font-size:12px; display:flex; justify-content:space-between; }
-  .pill { font-size:11px; padding:1px 7px; border-radius:99px; white-space:nowrap; }
+  .guest .top { display:flex; justify-content:space-between; gap:6px; align-items:center;
+                min-width:0; }
+  .device-btn { flex:1; min-width:0; text-align:left; overflow:hidden;
+                text-overflow:ellipsis; white-space:nowrap; font-weight:600;
+                padding:4px 8px; }
+  .device-btn:disabled { cursor:not-allowed; opacity:.55; }
+  .expand { flex:none; padding:4px 6px; color:var(--muted); font-size:11px; line-height:1; }
+  .expand.open { color:var(--text); }
+  .details { display:none; flex-direction:column; gap:2px; color:var(--muted);
+             font-size:12px; padding:2px 8px 4px; }
+  .details.open { display:flex; }
+  .pill { flex:none; font-size:11px; padding:1px 7px; border-radius:99px; white-space:nowrap; }
   .pill.running { background:rgba(76,175,125,.18); color:var(--ok); }
   .pill.booting { background:rgba(217,164,65,.18); color:var(--warn); }
   .pill.stopped, .pill.unknown { background:rgba(107,114,128,.2); color:var(--off); }
 </style>
 
+<header id="topbar">
+  <span id="frame-time">- ms per frame</span>
+  <span id="free-mem">free: - MB</span>
+</header>
+
 <nav id="guests">
   <fieldset>
     <legend>GUESTS</legend>
-    <div class="row" id="guest-list" style="flex-direction:column; gap:8px"></div>
+    <div id="guest-list" style="display:flex; flex-direction:column; gap:8px"></div>
   </fieldset>
 </nav>
 
@@ -248,8 +268,11 @@ const img = document.getElementById("screen");
 const placeholder = document.getElementById("placeholder");
 const guestList = document.getElementById("guest-list");
 const statusEl = document.getElementById("status");
+const frameTimeEl = document.getElementById("frame-time");
+const freeMemEl = document.getElementById("free-mem");
 const autoRefresh = document.getElementById("auto-refresh");
 let step = 2, loading = false, lastMs = 0, selected = null;
+let lastRows = [], expanded = new Set();
 
 function report(t) { statusEl.textContent = t; }
 
@@ -261,35 +284,56 @@ function pillState(g) {
 }
 
 function renderGuests(rows) {
+  lastRows = rows;
   guestList.innerHTML = "";
   for (const g of rows) {
     const state = pillState(g);
-    const b = document.createElement("button");
-    b.className = "guest" + (g.name === selected ? " selected" : "");
-    b.disabled = state !== "running";
-    b.onclick = () => selectGuest(g.name);
+    const row = document.createElement("div");
+    row.className = "guest" + (g.name === selected ? " selected" : "");
 
     const top = document.createElement("div");
     top.className = "top";
-    const name = document.createElement("span");
-    name.className = "name";
-    name.textContent = g.name;
+
+    const deviceBtn = document.createElement("button");
+    deviceBtn.className = "device-btn";
+    deviceBtn.disabled = state !== "running";
+    deviceBtn.textContent = g.serial || g.name;
+    deviceBtn.title = g.name;
+    deviceBtn.onclick = () => selectGuest(g.name);
+
     const pill = document.createElement("span");
     pill.className = "pill " + state;
     pill.textContent = state;
-    top.append(name, pill);
 
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    const tmpl = document.createElement("span");
-    tmpl.textContent = g.template;
-    const stats = document.createElement("span");
-    stats.textContent = g.stats
-      ? g.stats.mem_mb + " MB · " + g.stats.cpu_percent + "% CPU" : "";
-    meta.append(tmpl, stats);
+    const arrow = document.createElement("button");
+    arrow.className = "expand" + (expanded.has(g.name) ? " open" : "");
+    arrow.textContent = expanded.has(g.name) ? "v" : ">";
+    arrow.setAttribute("aria-label", "details for " + g.name);
+    arrow.onclick = () => {
+      if (expanded.has(g.name)) expanded.delete(g.name);
+      else expanded.add(g.name);
+      renderGuests(lastRows);
+    };
 
-    b.append(top, meta);
-    guestList.appendChild(b);
+    top.append(deviceBtn, pill, arrow);
+
+    const details = document.createElement("div");
+    details.className = "details" + (expanded.has(g.name) ? " open" : "");
+    for (const [k, v] of [
+      ["name", g.name],
+      ["template", g.template],
+      ["id", g.id],
+      ["adb", g.adb ?? "-"],
+      ["memory", g.stats ? g.stats.mem_mb + " MB" : "-"],
+      ["cpu", g.stats ? g.stats.cpu_percent + "%" : "-"],
+    ]) {
+      const line = document.createElement("div");
+      line.textContent = k + ": " + v;
+      details.appendChild(line);
+    }
+
+    row.append(top, details);
+    guestList.appendChild(row);
   }
 }
 
@@ -301,6 +345,7 @@ async function refreshGuests() {
     selected = data.selected;
     img.hidden = !selected;
     placeholder.classList.toggle("visible", !selected);
+    freeMemEl.textContent = "free: " + data.free_mb + " MB";
     renderGuests(data.guests);
   } catch (e) {
     report("error: " + e.message);
@@ -333,7 +378,7 @@ async function fetchFrame() {
     img.src = URL.createObjectURL(await a.blob());
     if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
     lastMs = Math.round(performance.now() - start);
-    report(lastMs + " ms per frame");
+    frameTimeEl.textContent = lastMs + " ms per frame";
   } catch (e) {
     report("error: " + e.message);
   } finally {
@@ -420,8 +465,11 @@ class Handler(BaseHTTPRequestHandler):
             if p in ("", "index.html"):
                 return self.respond(200, "text/html; charset=utf-8", PAGE)
             if p == "guests":
+                payload = guest_status()
                 return self.respond(200, "application/json", json.dumps({
-                    "selected": self.server.selected, "guests": guest_rows(),
+                    "selected": self.server.selected,
+                    "guests": payload["guests"],
+                    "free_mb": payload["free_mb"],
                 }))
             if self.server.device is None:
                 return self.respond(409, "text/plain; charset=utf-8", "no guest selected")
