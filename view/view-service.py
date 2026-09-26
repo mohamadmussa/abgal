@@ -401,12 +401,33 @@ async function send(route, data) {
 }
 
 // The browser sends the fraction, not the pixel. That way the page does not
-// need to know the device resolution or the downscale step.
-img.addEventListener("click", (e) => {
+// need to know the device resolution or the downscale step. A press that
+// releases close to where it started is a tap, a press that moves is a
+// drag, sent as a swipe between the two fractions.
+function fraction(e) {
   const r = img.getBoundingClientRect();
-  send("tap", { ax: (e.clientX - r.left) / r.width,
-                     ay: (e.clientY - r.top) / r.height });
+  return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+}
+
+let dragStart = null;
+
+img.addEventListener("mousedown", (e) => { dragStart = fraction(e); });
+
+img.addEventListener("mouseup", (e) => {
+  if (!dragStart) return;
+  const r = img.getBoundingClientRect();
+  const end = fraction(e);
+  const movedPx = Math.hypot((end.x - dragStart.x) * r.width,
+                              (end.y - dragStart.y) * r.height);
+  if (movedPx < 6) {
+    send("tap", { ax: dragStart.x, ay: dragStart.y });
+  } else {
+    send("swipe", { ax1: dragStart.x, ay1: dragStart.y, ax2: end.x, ay2: end.y });
+  }
+  dragStart = null;
 });
+
+img.addEventListener("mouseleave", () => { dragStart = null; });
 
 document.querySelectorAll("[data-key]").forEach(b =>
   b.onclick = () => send("key", { name: b.dataset.key }));
@@ -515,17 +536,24 @@ class Handler(BaseHTTPRequestHandler):
             elif p == "text":
                 d.type_text(str(data["word"])[:200])
             elif p == "swipe":
-                mx, my = width // 2, height // 2
-                reach = height // 3
-                pairs = {
-                    "up":    (mx, my + reach, mx, my - reach),
-                    "down":  (mx, my - reach, mx, my + reach),
-                    "left":  (mx + reach, my, mx - reach, my),
-                    "right": (mx - reach, my, mx + reach, my),
-                }
-                if data["direction"] not in pairs:
-                    return self.respond(400, "text/plain; charset=utf-8", "unknown")
-                d.swipe(*pairs[data["direction"]], 220)
+                if "direction" in data:
+                    mx, my = width // 2, height // 2
+                    reach = height // 3
+                    pairs = {
+                        "up":    (mx, my + reach, mx, my - reach),
+                        "down":  (mx, my - reach, mx, my + reach),
+                        "left":  (mx + reach, my, mx - reach, my),
+                        "right": (mx - reach, my, mx + reach, my),
+                    }
+                    if data["direction"] not in pairs:
+                        return self.respond(400, "text/plain; charset=utf-8", "unknown")
+                    d.swipe(*pairs[data["direction"]], 220)
+                else:
+                    x1 = max(0, min(width - 1, int(float(data["ax1"]) * width)))
+                    y1 = max(0, min(height - 1, int(float(data["ay1"]) * height)))
+                    x2 = max(0, min(width - 1, int(float(data["ax2"]) * width)))
+                    y2 = max(0, min(height - 1, int(float(data["ay2"]) * height)))
+                    d.swipe(x1, y1, x2, y2, 220)
             else:
                 return self.respond(404, "text/plain; charset=utf-8", "unknown")
 
