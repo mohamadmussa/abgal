@@ -188,7 +188,7 @@ PAGE = """<!doctype html>
   :root { color-scheme: dark; --bg:#16181d; --field:#20242c; --border:#333944;
           --text:#e6e9ef; --muted:#9aa3b2; --accent:#5b9cf8;
           --ok:#4caf7d; --warn:#d9a441; --off:#6b7280; --bad:#e0605a;
-          --left-w:260px; --right-w:260px; }
+          --left-w:260px; --right-w:260px; --guests-h:260px; }
   * { box-sizing:border-box; }
   html, body { height:100%; }
   body { margin:0; background:var(--bg); color:var(--text);
@@ -203,6 +203,10 @@ PAGE = """<!doctype html>
   .resizer:hover::after { background:var(--accent); }
   #lresize { grid-area:lresize; }
   #rresize { grid-area:rresize; }
+  .vresizer { cursor:row-resize; height:12px; flex:none; }
+  .vresizer::after { content:""; position:absolute; left:0; right:0; top:5px;
+                      height:2px; background:var(--border); border-radius:1px; }
+  .vresizer:hover::after { background:var(--accent); }
   #topbar { grid-area:header; display:flex; justify-content:space-between;
             background:var(--field); border:1px solid var(--border);
             border-radius:10px; padding:8px 14px; color:var(--muted);
@@ -264,13 +268,15 @@ PAGE = """<!doctype html>
 </header>
 
 <nav id="guests">
-  <fieldset>
+  <fieldset style="flex:0 0 var(--guests-h); min-height:0; display:flex; flex-direction:column">
     <legend>GUESTS</legend>
     <div id="guest-list"
-         style="display:flex; flex-direction:column; gap:8px; max-height:38vh; overflow-y:auto"></div>
+         style="display:flex; flex-direction:column; gap:8px; flex:1; min-height:0; overflow-y:auto"></div>
   </fieldset>
 
-  <fieldset>
+  <div id="vresize" class="resizer vresizer"></div>
+
+  <fieldset style="flex:1; min-height:0; display:flex; flex-direction:column">
     <legend>DEBUG</legend>
     <label><input type="checkbox" id="debug-toggle"> show debug output</label>
     <pre id="debug-log" hidden></pre>
@@ -307,6 +313,9 @@ PAGE = """<!doctype html>
       <button data-key="ENTER">ENTER</button>
       <button data-key="DEL">DEL</button>
       <button data-key="TAB">TAB</button>
+      <button data-key="SEARCH">SEARCH</button>
+      <button data-key="VOLUME_UP">VOLUME_UP</button>
+      <button data-key="VOLUME_DOWN">VOLUME_DOWN</button>
     </div>
   </fieldset>
 
@@ -603,6 +612,29 @@ function makeResizer(handle, cssVar, side) {
 }
 makeResizer(document.getElementById("lresize"), "--left-w", "left");
 makeResizer(document.getElementById("rresize"), "--right-w", "right");
+
+// Drags the GUESTS/DEBUG split in the left column the same way, but along
+// the vertical axis and against the guest list's flex-basis height.
+function makeRowResizer(handle, cssVar) {
+  handle.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = parseInt(getComputedStyle(document.documentElement)
+                            .getPropertyValue(cssVar), 10);
+    function onMove(ev) {
+      const delta = ev.clientY - startY;
+      const next = Math.max(80, Math.min(window.innerHeight - 200, startH + delta));
+      document.documentElement.style.setProperty(cssVar, next + "px");
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+makeRowResizer(document.getElementById("vresize"), "--guests-h");
 
 (async function loop() {
   for (;;) {
