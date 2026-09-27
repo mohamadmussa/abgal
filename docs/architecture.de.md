@@ -1,5 +1,7 @@
 # Architektur
 
+*[In English](architecture.md)*
+
 [README.md](../README.md) bringt ein Android Virtual Device (AVD) in vier
 Befehlen von einem frischen Klon zu einem laufenden Emulator. [Wie es
 funktioniert](how-it-works.md) verfolgt ein AVD durch die Datei oder
