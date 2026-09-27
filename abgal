@@ -57,6 +57,10 @@ ANDROID_CLI = SDK / "cmdline-tools" / "latest" / "bin" / "android"
 # is called qemu-system-x86_64. This is the name that actually appears.
 QEMU = "qemu-system-x86"
 
+# Where the kernel shows processes and memory. A constant so the tests can
+# point it at a fake tree.
+PROC = Path("/proc")
+
 # Above the memory a guest is configured for. A guest keeps growing for
 # minutes after it reports a completed boot, so only the settled figure counts.
 # Almost all of it is the software renderer, which is the same size whatever
@@ -177,7 +181,7 @@ def available_mb():
     silently matches nothing on a machine that is not set to English.
     """
     try:
-        for line in Path("/proc/meminfo").read_text().splitlines():
+        for line in (PROC / "meminfo").read_text().splitlines():
             if line.startswith("MemAvailable:"):
                 return int(line.split()[1]) // 1024
     except (OSError, ValueError, IndexError):
@@ -278,7 +282,7 @@ def resolve(wanted):
 
 def qemu_processes():
     """Every running emulator, as pid and its argument list."""
-    for entry in Path("/proc").iterdir():
+    for entry in PROC.iterdir():
         if not entry.name.isdigit():
             continue
         try:
@@ -313,9 +317,9 @@ def process_stats(pid):
     thread, more than a status readout is worth.
     """
     try:
-        status = Path("/proc/%d/status" % pid).read_text()
-        stat = Path("/proc/%d/stat" % pid).read_text()
-        uptime = float(Path("/proc/uptime").read_text().split()[0])
+        status = (PROC / str(pid) / "status").read_text()
+        stat = (PROC / str(pid) / "stat").read_text()
+        uptime = float((PROC / "uptime").read_text().split()[0])
 
         mem_kb = 0
         for line in status.splitlines():
