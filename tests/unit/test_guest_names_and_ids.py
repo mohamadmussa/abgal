@@ -34,3 +34,8 @@ def test_guest_id_two_readers_see_the_same_id(tmp_path):
 
     assert first_reader == second_reader
     assert (folder / "abgal-id").read_text().strip() == first_reader
+
+
+def test_port_comes_from_the_serial():
+    assert abgal.port_of("emulator-5556") == 5556
+    assert abgal.port_of("usb-test-phone") == 0

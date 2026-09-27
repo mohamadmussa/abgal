@@ -45,8 +45,3 @@ def test_serial_of_finds_a_guest_by_name(fake_adb):
 
 def test_serial_name_is_none_when_the_console_does_not_answer(fake_adb):
     assert abgal.serial_name("emulator-5554") is None
-
-
-def test_port_comes_from_the_serial():
-    assert abgal.port_of("emulator-5556") == 5556
-    assert abgal.port_of("usb-test-phone") == 0
