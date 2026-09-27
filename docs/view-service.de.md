@@ -69,6 +69,12 @@ Knöpfe:
 | Stopp | das AVD einen Prozess hat | `abgal stop` |
 | Neustart | das AVD einen Prozess hat | `abgal stop`, danach `abgal start` |
 
+Die Liste zeigt außerdem jedes Gerät, das `adb devices` sieht und `abgal`
+nicht kennt, ein Handy oder Tablet an USB oder über `adb connect`. Eine
+solche Zeile lässt sich genauso auswählen und steuern wie ein AVD, sobald
+sie `device` meldet, hat aber keinen Start, Stopp oder Neustart, echte
+Hardware ist nicht `abgal`s, um sie ein oder auszuschalten.
+
 Ein Start kann im schlechtesten Fall bis zu zehn Minuten dauern, `abgal`
 wartet bis zu fünf Minuten auf die Konsole und danach noch einmal bis zu
 fünf Minuten auf den Boot, eins nach dem anderen. Ein Stopp oder die

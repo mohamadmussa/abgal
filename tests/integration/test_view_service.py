@@ -347,3 +347,75 @@ def test_a_body_that_is_not_utf8_is_a_bad_request(server):
                         token=TOKEN, content_type="application/json",
                         body=b'{"a":"\xff"}')
     assert status == 400
+
+
+class FakeAdbDevices:
+    """Stands in for subprocess.run(["adb", "devices"]) with fixed output."""
+
+    def __init__(self, lines):
+        self.returncode = 0
+        text = "List of devices attached\n" + "\n".join(lines) + "\n\n"
+        self.stdout = text.encode("utf-8")
+        self.stderr = b""
+
+
+def test_physical_devices_excludes_known_serials(monkeypatch):
+    monkeypatch.setattr(view_service.subprocess, "run", lambda *a, **k: FakeAdbDevices([
+        "emulator-5554\tdevice",
+        "physical-fake-serial\tdevice",
+    ]))
+
+    rows = view_service.physical_devices({"emulator-5554"})
+
+    assert [r["name"] for r in rows] == ["physical-fake-serial"]
+    assert rows[0]["physical"] is True
+    assert rows[0]["pid"] is None
+    assert rows[0]["adb"] == "device"
+
+
+def test_physical_devices_skips_blank_and_malformed_lines(monkeypatch):
+    monkeypatch.setattr(view_service.subprocess, "run", lambda *a, **k: FakeAdbDevices([
+        "* daemon started successfully",
+        "physical-fake-serial\tunauthorized",
+    ]))
+
+    rows = view_service.physical_devices(set())
+
+    assert [r["name"] for r in rows] == ["physical-fake-serial"]
+    assert rows[0]["adb"] == "unauthorized"
+
+
+def test_guests_route_merges_physical_devices(server, monkeypatch):
+    monkeypatch.setattr(view_service, "guest_status", lambda: {
+        "guests": [{"name": "g1", "id": "abc12345", "template": "t", "pid": 1,
+                    "serial": "emulator-5554", "adb": "device", "stats": None}],
+        "free_mb": 1000,
+    })
+    monkeypatch.setattr(view_service, "physical_devices", lambda known: [
+        {"name": "physical-fake-serial", "id": None, "template": "physical device",
+         "pid": None, "serial": "physical-fake-serial", "adb": "device", "stats": None,
+         "physical": True},
+    ])
+
+    status, body = request(server, "GET", "/guests", host=host_for(server), token=TOKEN)
+
+    assert status == 200
+    names = [g["name"] for g in json.loads(body)["guests"]]
+    assert names == ["g1", "physical-fake-serial"]
+
+
+def test_switch_guest_selects_a_physical_device(server, monkeypatch):
+    monkeypatch.setattr(view_service, "guest_status", lambda: {"guests": [], "free_mb": 1})
+    monkeypatch.setattr(view_service, "physical_devices", lambda known: [
+        {"name": "physical-fake-serial", "id": None, "template": "physical device",
+         "pid": None, "serial": "physical-fake-serial", "adb": "device", "stats": None,
+         "physical": True},
+    ])
+
+    status, _ = request(server, "POST", "/switch", host=host_for(server), token=TOKEN,
+                        content_type="application/json",
+                        body=json.dumps({"name": "physical-fake-serial"}))
+
+    assert status == 200
+    assert server.selected == "physical-fake-serial"
+    assert server.device.serial == "physical-fake-serial"

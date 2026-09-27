@@ -67,6 +67,12 @@ the row's right end expands it, showing the guest's name, template, id,
 | Stop | the guest has a process | `abgal stop` |
 | Restart | the guest has a process | `abgal stop`, then `abgal start` |
 
+The list also shows every device `adb devices` sees that `abgal` does not
+know about, a phone or tablet on USB or over `adb connect`. Such a row can
+be selected and driven the same way as a guest once it reports `device`,
+but carries no Start, Stop or Restart, real hardware is not `abgal`'s to
+switch on or off.
+
 A start can take up to ten minutes in the worst case, `abgal` waits up to
 five minutes for the console and again up to five minutes for boot, one
 after another. A stop or the stop half of a restart takes at most about a
