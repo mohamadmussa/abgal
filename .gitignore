@@ -25,6 +25,10 @@ apk/*
 # not of this project, so it stays on the machine that does the testing.
 app.conf
 
+# The repos this machine's self hosted runners register against. A property
+# of the machine, and it names real GitHub repositories.
+runner.conf
+
 # German working copies. The published language is English, except these
 # committed mirrors of pages that already have an English original on main.
 *.de.md

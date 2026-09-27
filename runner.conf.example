@@ -1,0 +1,19 @@
+# Runners this machine can create. Copy this file to runner.conf and fill in
+# your own repos. That copy is gitignored, since it names your own GitHub
+# repositories, which is a property of the machine that hosts the runner,
+# not of this project.
+#
+# abgal github-runner create reads the line whose name matches -n. Every
+# column can also be overridden on the command line, for a runner not
+# listed here at all.
+#
+# Columns, separated by |:
+#
+#   name      the runner's name, also its systemd service and the name
+#             config.sh registers it under
+#   repo      owner/repo it registers against
+#   labels    comma separated, passed to config.sh --labels
+#   backend   host or container
+#
+# name    | repo                  | labels          | backend
+ci-01     | myorg/myrepo          | linux,x64       | host

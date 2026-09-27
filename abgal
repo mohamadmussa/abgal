@@ -40,10 +40,12 @@ import shutil
 import signal
 import subprocess
 import sys
+import tarfile
 import time
 import urllib.request
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 HOME = Path(__file__).resolve().parent
 SDK = HOME / "sdk"
@@ -1766,6 +1768,164 @@ def pick_runner_version(version=None):
     return rows[-1] if rows else None
 
 
+RUNNER_CONF_FIELDS = ("name", "repo", "labels", "backend")
+
+
+def runner_conf_row(line):
+    """One runner.conf line as a dict of its four columns."""
+    fields = [f.strip() for f in line.split("|")]
+    fields += [""] * (len(RUNNER_CONF_FIELDS) - len(fields))
+    return dict(zip(RUNNER_CONF_FIELDS, fields))
+
+
+def runner_conf_rows():
+    """Every runner defined in runner.conf, in file order."""
+    try:
+        text = (HOME / "runner.conf").read_text()
+    except OSError:
+        return []
+    lines = (line.strip() for line in text.splitlines())
+    return [runner_conf_row(line) for line in lines if line and not line.startswith("#")]
+
+
+def find_runner_conf(name):
+    """This runner's own line from runner.conf, or None without one."""
+    for row in runner_conf_rows():
+        if row["name"] == name:
+            return row
+    return None
+
+
+def fetch_runner_tarball(row, target):
+    """Downloads the pinned runner build, verifies it and unpacks into target.
+
+    The download sits next to target and only takes effect once the sha256
+    matches, so a bad or interrupted fetch never leaves a runner half
+    installed.
+    """
+    target.mkdir(parents=True, exist_ok=True)
+    download = target.parent / (".abgal-runner-download-%s.tar.gz" % target.name)
+    print("Fetching %s" % row["url"])
+    digest = hashlib.sha256()
+    try:
+        with urllib.request.urlopen(row["url"], timeout=60) as response, \
+                open(download, "wb") as out:
+            total = int(response.headers.get("Content-Length") or 0)
+            done, shown = 0, 0
+            while True:
+                chunk = response.read(1 << 20)
+                if not chunk:
+                    break
+                out.write(chunk)
+                digest.update(chunk)
+                done += len(chunk)
+                if total and done * 10 // total > shown:
+                    shown = done * 10 // total
+                    print("  %3d%%  %d MB" % (shown * 10, done >> 20))
+    except (OSError, ValueError) as error:
+        download.unlink(missing_ok=True)
+        return problem("could not fetch %s:\n       %s" % (row["url"], error))
+    if digest.hexdigest() != row["sha256"]:
+        download.unlink()
+        return problem("the download has sha256 %s, runner-versions.conf expects %s.\n"
+                       "       Nothing was unpacked." % (digest.hexdigest(), row["sha256"]))
+    try:
+        with tarfile.open(download) as archive:
+            if hasattr(tarfile, "data_filter"):
+                archive.extractall(target, filter="data")
+            else:
+                archive.extractall(target)
+    except (OSError, tarfile.TarError) as error:
+        return problem("could not unpack the runner tarball into %s:\n       %s" % (target, error))
+    finally:
+        download.unlink(missing_ok=True)
+    print("Unpacked into %s" % target)
+    return 0
+
+
+def runner_registration_token(repo, key):
+    """A registration token for config.sh, and an error when there is none.
+
+    --key gives a personal access token directly. Without it, the token
+    comes from gh, using whatever account it is already logged into.
+    """
+    if key:
+        return key, None
+    if not shutil.which("gh"):
+        return None, "no --key given and gh is not on this machine"
+    try:
+        done = subprocess.run(
+            ["gh", "api", "-X", "POST", "repos/%s/actions/runners/registration-token" % repo,
+             "--jq", ".token"],
+            capture_output=True, text=True, timeout=30)
+    except OSError as err:
+        return None, "gh could not run: %s" % err
+    token = done.stdout.strip()
+    if done.returncode != 0 or not token:
+        return None, (done.stderr or "gh returned no token").strip()
+    return token, None
+
+
+def run_runner_script(target, script, extra_args, timeout):
+    """One of the runner's own scripts, config.sh or svc.sh, run inside target."""
+    try:
+        return subprocess.run([str(target / script)] + extra_args, cwd=str(target),
+                              capture_output=True, text=True, timeout=timeout)
+    except OSError as err:
+        return SimpleNamespace(returncode=1, stdout="", stderr="%s could not run: %s" % (script, err))
+
+
+def cmd_github_runner_create(args):
+    conf = find_runner_conf(args.name) or {}
+    repo = args.repo or conf.get("repo")
+    labels = args.labels or conf.get("labels", "")
+    backend = args.backend or conf.get("backend") or "host"
+    if not repo:
+        return problem("no repo for %s. Add it to runner.conf or pass --repo owner/repo." % args.name)
+    if backend != "host":
+        return problem("the %s backend is not implemented yet, only host." % backend)
+
+    row = pick_runner_version(args.version)
+    if row is None:
+        return problem(
+            "no tested runner build for this machine's architecture%s in runner-versions.conf."
+            % (" and version %s" % args.version if args.version else ""))
+
+    target = runner_dir(args.name)
+    if target.exists():
+        return problem("%s already exists. Remove it with abgal github-runner remove first." % target)
+
+    if fetch_runner_tarball(row, target) != 0:
+        shutil.rmtree(target, ignore_errors=True)
+        return 1
+
+    token, error = runner_registration_token(repo, args.key)
+    if error:
+        shutil.rmtree(target, ignore_errors=True)
+        return problem("could not get a registration token: %s" % error)
+
+    done = run_runner_script(target, "config.sh",
+                             ["--url", "https://github.com/%s" % repo, "--token", token,
+                              "--name", args.name, "--labels", labels, "--unattended", "--replace"],
+                             120)
+    if done.returncode != 0:
+        shutil.rmtree(target, ignore_errors=True)
+        return problem("config.sh failed:\n%s" % (done.stdout + done.stderr).strip())
+
+    for step in ("install", "start"):
+        done = run_runner_script(target, "svc.sh", [step], 60)
+        if done.returncode != 0:
+            return problem("svc.sh %s failed:\n%s" % (step, (done.stdout + done.stderr).strip()))
+
+    write_runner_state(args.name, {
+        "name": args.name, "backend": "host", "repo": repo,
+        "labels": labels, "version": row["version"],
+    })
+    print("%s created and started. Check with: abgal github-runner status -n %s --wait 60"
+          % (args.name, args.name))
+    return 0
+
+
 # systemctl's own "Active: active (running) since <date>; 2h 15min ago" line,
 # folded into svc.sh status. Pulled out so DETAIL does not repeat UPTIME, and
 # left as "-" when the text does not have this shape.
@@ -2059,6 +2219,23 @@ def build_parser():
     runner_log.add_argument("--lines", type=int, default=200, metavar="N",
                             help="how many lines from the end of the log")
     runner_log.set_defaults(run=cmd_github_runner_log)
+
+    runner_create = runner_subs.add_parser(
+        "create", help="register and start a runner from runner.conf")
+    runner_create.add_argument("-n", "--name", required=True, metavar="RUNNER",
+                               help="the runner's name, also its entry in runner.conf")
+    runner_create.add_argument("--repo", metavar="OWNER/REPO",
+                               help="overrides the repo column of runner.conf")
+    runner_create.add_argument("--labels", metavar="LIST",
+                               help="overrides the labels column of runner.conf")
+    runner_create.add_argument("--backend", choices=["host", "container"],
+                               help="overrides the backend column of runner.conf")
+    runner_create.add_argument("--version", metavar="VERSION",
+                               help="a tested version from runner-versions.conf."
+                                    " Without it, the newest tested for this machine")
+    runner_create.add_argument("--key", metavar="TOKEN",
+                               help="a personal access token, instead of one from gh")
+    runner_create.set_defaults(run=cmd_github_runner_create)
 
     return parser
 
