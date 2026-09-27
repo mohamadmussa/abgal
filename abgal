@@ -45,6 +45,7 @@ from pathlib import Path
 HOME = Path(__file__).resolve().parent
 SDK = HOME / "sdk"
 AVD = HOME / "avd"
+RUNNERS = HOME / "runners"
 LOGS = HOME / "logs"
 ANDROID_USER = HOME / "android-home"
 ADB = SDK / "platform-tools" / "adb"
@@ -1687,6 +1688,37 @@ def cmd_webui(args):
     except KeyboardInterrupt:
         # The service got the same Ctrl-C and has printed that it stopped.
         return 0
+
+
+# --------------------------------------------------------------- github-runner
+
+
+def runner_state_path(name):
+    return RUNNERS / (name + ".json")
+
+
+def runner_dir(name):
+    return RUNNERS / name
+
+
+def read_runner_state(name):
+    """The state abgal wrote for this runner at create time, or None."""
+    try:
+        return json.loads(runner_state_path(name).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def write_runner_state(name, state):
+    RUNNERS.mkdir(parents=True, exist_ok=True)
+    runner_state_path(name).write_text(json.dumps(state, indent=2) + "\n")
+
+
+def runner_names():
+    """Every runner with a state file on this machine, sorted."""
+    if not RUNNERS.is_dir():
+        return []
+    return sorted(p.stem for p in RUNNERS.glob("*.json"))
 
 
 # --------------------------------------------------------------------- entry

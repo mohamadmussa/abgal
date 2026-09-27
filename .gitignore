@@ -4,6 +4,10 @@ sdk/
 # Virtual device images and their runtime state, several gigabytes.
 avd/
 
+# Self hosted GitHub Actions runners this machine manages: the state file
+# abgal writes at create time and the installed runner software itself.
+runners/
+
 # User files of the SDK tools, redirected here from ~/.android. Includes a
 # copy of the private adb key, so this never reaches a commit.
 android-home/
