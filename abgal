@@ -1724,6 +1724,48 @@ def runner_names():
     return sorted(p.stem for p in RUNNERS.glob("*.json"))
 
 
+RUNNER_VERSION_FIELDS = ("arch", "version", "url", "sha256")
+
+RUNNER_ARCH_BY_MACHINE = {"x86_64": "linux-x64", "aarch64": "linux-arm64"}
+
+
+def runner_version_row(line):
+    """One runner-versions.conf line as a dict of its four columns."""
+    fields = [f.strip() for f in line.split("|")]
+    fields += [""] * (len(RUNNER_VERSION_FIELDS) - len(fields))
+    return dict(zip(RUNNER_VERSION_FIELDS, fields))
+
+
+def runner_version_rows():
+    """Every tested runner build from runner-versions.conf, in file order."""
+    try:
+        text = (HOME / "runner-versions.conf").read_text()
+    except OSError:
+        return []
+    lines = (line.strip() for line in text.splitlines())
+    return [runner_version_row(line) for line in lines if line and not line.startswith("#")]
+
+
+def runner_arch():
+    """This machine's architecture, in runner-versions.conf's own spelling."""
+    return RUNNER_ARCH_BY_MACHINE.get(platform.machine())
+
+
+def pick_runner_version(version=None):
+    """The tested build to install: the row for this arch and version.
+
+    Without a version, the newest (bottom-most) tested row for this arch,
+    which is the point of only ever appending a line after it was tested.
+    Returns None when the architecture or the requested version is not
+    listed in runner-versions.conf, never a guess.
+    """
+    arch = runner_arch()
+    rows = [row for row in runner_version_rows() if row["arch"] == arch]
+    if version:
+        rows = [row for row in rows if row["version"] == version]
+    return rows[-1] if rows else None
+
+
 # systemctl's own "Active: active (running) since <date>; 2h 15min ago" line,
 # folded into svc.sh status. Pulled out so DETAIL does not repeat UPTIME, and
 # left as "-" when the text does not have this shape.
