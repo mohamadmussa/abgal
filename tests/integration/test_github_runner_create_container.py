@@ -1,4 +1,4 @@
-"""abgal github-runner create, container backend.
+"""abgal github-runner create/remove, container backend.
 
 No real docker/podman, gh, urlopen or /.dockerenv runs. subprocess.run is
 replaced, urlopen is replaced with a small in-memory tar.gz, and
@@ -154,3 +154,30 @@ def test_create_fails_when_neither_pull_nor_local_dockerfile_work(home, monkeypa
     assert abgal.cmd_github_runner_create(args("ci-01", repo="o/r", key="pat-token")) == 1
     assert "could not pull" in capsys.readouterr().err
     assert not (home / "runners" / "ci-01").exists()
+
+
+def test_remove_deregisters_then_removes_the_container(home, monkeypatch):
+    (home / "runners").mkdir(parents=True)
+    (home / "runners" / "ci-01.json").write_text(
+        '{"name": "ci-01", "backend": "container", "repo": "myorg/myrepo", '
+        '"labels": "linux,x64", "version": "2.337.0", "engine": "docker", "container": "ci-01"}')
+    (home / "runners" / "ci-01").mkdir(parents=True)
+
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[:2] == ["gh", "api"]:
+            return done(stdout="rm-tok3n\n")
+        return done()
+
+    monkeypatch.setattr(abgal.shutil, "which", lambda name: "/usr/bin/gh")
+    monkeypatch.setattr(abgal.subprocess, "run", fake_run)
+
+    assert abgal.cmd_github_runner_remove(args("ci-01", backend=None)) == 0
+
+    exec_call = next(c for c in calls if c[:2] == ["docker", "exec"])
+    assert exec_call[2:] == ["ci-01", "/runner/config.sh", "remove", "--token", "rm-tok3n"]
+    assert any(c[:3] == ["docker", "rm", "-f"] for c in calls)
+    assert not (home / "runners" / "ci-01").exists()
+    assert abgal.read_runner_state("ci-01") is None

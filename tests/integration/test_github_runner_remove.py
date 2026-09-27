@@ -107,12 +107,6 @@ def test_remove_without_a_known_repo_only_cleans_up_locally(home, monkeypatch, c
     assert not (home / "runners" / "ci-01").exists()
 
 
-def test_remove_fails_for_container_backend(home):
-    write_state(home, "ci-01", backend="container")
-
-    assert abgal.cmd_github_runner_remove(args("ci-01")) == 1
-
-
 def test_remove_without_a_state_file_still_cleans_up_the_folder(home, monkeypatch):
     (home / "runners" / "ci-01").mkdir(parents=True)
 

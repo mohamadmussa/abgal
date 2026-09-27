@@ -2032,6 +2032,65 @@ def cmd_github_runner_create(args):
     return 0
 
 
+def remove_host_runner(target, repo, key):
+    """Stops and uninstalls the systemd service, deregisters best effort."""
+    for step in ("stop", "uninstall"):
+        done = run_runner_script(target, "svc.sh", [step], 60)
+        if done.returncode != 0:
+            problem("svc.sh %s failed, continuing:\n%s"
+                    % (step, (done.stdout + done.stderr).strip()))
+    if not repo:
+        problem("no repo known, not deregistering from GitHub.")
+        return
+    token, error = runner_removal_token(repo, key)
+    if error:
+        problem("could not get a removal token, removing only locally: %s" % error)
+        return
+    done = run_runner_script(target, "config.sh", ["remove", "--token", token], 60)
+    if done.returncode != 0:
+        problem("config.sh remove failed, continuing:\n%s" % (done.stdout + done.stderr).strip())
+
+
+def deregister_container_runner(engine, container, repo, key):
+    """Best effort config.sh remove inside the container, before it is torn down."""
+    if not repo:
+        problem("no repo known, not deregistering from GitHub.")
+        return
+    token, error = runner_removal_token(repo, key)
+    if error:
+        problem("could not get a removal token, removing only locally: %s" % error)
+        return
+    done = run_engine_command(
+        engine, ["exec", container, "/runner/config.sh", "remove", "--token", token], 60)
+    if done.returncode != 0:
+        problem("config.sh remove inside the container failed, continuing:\n%s"
+                % (done.stdout + done.stderr).strip())
+
+
+def remove_container_runner(state, name, target, repo, key):
+    """Deregisters best effort, then stops and removes the container."""
+    engine = state.get("engine") or container_engine()
+    if not engine:
+        problem("neither docker nor podman is on this machine, removing only locally.")
+        return
+    container = state.get("container") or name
+    deregister_container_runner(engine, container, repo, key)
+    done = run_engine_command(engine, ["rm", "-f", container], 30)
+    if done.returncode != 0:
+        problem("%s rm failed, continuing:\n%s" % (engine, (done.stdout + done.stderr).strip()))
+
+
+def remove_runner_backend(backend, state, name, target, repo, key):
+    """The backend's own best effort removal, only when the runner folder exists."""
+    if not target.exists():
+        return
+    if backend == "host":
+        remove_host_runner(target, repo, key)
+    else:
+        remove_container_runner(state, name, target, repo, key)
+    shutil.rmtree(target, ignore_errors=True)
+
+
 def cmd_github_runner_remove(args):
     state = read_runner_state(args.name)
     target = runner_dir(args.name)
@@ -2039,30 +2098,11 @@ def cmd_github_runner_remove(args):
         return problem("no runner named %s. This machine manages no such runner." % args.name)
 
     backend = (state or {}).get("backend") or args.backend or "host"
-    if backend != "host":
-        return problem("the %s backend is not implemented yet, only host." % backend)
+    if backend not in ("host", "container"):
+        return problem("unknown backend %s, host or container." % backend)
 
-    if target.exists():
-        for step in ("stop", "uninstall"):
-            done = run_runner_script(target, "svc.sh", [step], 60)
-            if done.returncode != 0:
-                problem("svc.sh %s failed, continuing:\n%s"
-                        % (step, (done.stdout + done.stderr).strip()))
-
-        repo = args.repo or (state or {}).get("repo")
-        if repo:
-            token, error = runner_removal_token(repo, args.key)
-            if error:
-                problem("could not get a removal token, removing only locally: %s" % error)
-            else:
-                done = run_runner_script(target, "config.sh", ["remove", "--token", token], 60)
-                if done.returncode != 0:
-                    problem("config.sh remove failed, continuing:\n%s"
-                            % (done.stdout + done.stderr).strip())
-        else:
-            problem("no repo known for %s, not deregistering from GitHub." % args.name)
-
-        shutil.rmtree(target, ignore_errors=True)
+    repo = args.repo or (state or {}).get("repo")
+    remove_runner_backend(backend, state or {}, args.name, target, repo, args.key)
 
     runner_state_path(args.name).unlink(missing_ok=True)
     print("%s removed." % args.name)
@@ -2385,6 +2425,8 @@ def build_parser():
     runner_remove.add_argument("-n", "--name", required=True, metavar="RUNNER")
     runner_remove.add_argument("--repo", metavar="OWNER/REPO",
                                help="overrides the repo remembered in the state file")
+    runner_remove.add_argument("--backend", choices=["host", "container"],
+                               help="used only without a state file, when name alone cannot tell")
     runner_remove.add_argument("--key", metavar="TOKEN",
                                help="a personal access token, instead of one from gh")
     runner_remove.set_defaults(run=cmd_github_runner_remove)
