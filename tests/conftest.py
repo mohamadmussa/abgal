@@ -22,6 +22,9 @@ abgal = importlib.util.module_from_spec(spec)
 sys.modules["abgal"] = abgal
 loader.exec_module(abgal)
 
+from fakes.adb import FakeAdb  # noqa: E402, needs abgal in sys.modules
+from fakes.proc import FakeProc  # noqa: E402
+
 
 def pytest_collection_modifyitems(config, items):
     skip = pytest.mark.skip(reason="needs real guests, set ABGAL_E2E=1")
@@ -31,3 +34,17 @@ def pytest_collection_modifyitems(config, items):
         real = item.get_closest_marker("e2e") or item.get_closest_marker("load")
         if real and os.environ.get("ABGAL_E2E") != "1":
             item.add_marker(skip)
+
+
+@pytest.fixture
+def fake_proc(tmp_path, monkeypatch):
+    proc = FakeProc(tmp_path / "proc")
+    monkeypatch.setattr(abgal, "PROC", proc.root)
+    return proc
+
+
+@pytest.fixture
+def fake_adb(fake_proc, monkeypatch):
+    adb = FakeAdb(fake_proc)
+    monkeypatch.setattr(abgal, "adb", adb)
+    return adb
