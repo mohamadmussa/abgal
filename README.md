@@ -80,8 +80,8 @@ was ready (2026-09-23). `status` then shows it as live, and the device adb
 reached it on:
 
 ```text
-NAME                   ID        STATE     DEVICE         ADB          TEMPLATE
-dev                    19c95791  live      emulator-5554  device       phone-1080x2400-480-api35-x86_64
+NAME                   ID        STATE     DEVICE         ADB          MEM    CPU    UPTIME    TEMPLATE
+dev                    19c95791  live      emulator-5554  device       612    3.2    00:00:12  phone-1080x2400-480-api35-x86_64
 
 Memory available: 9211 MB. A guest needs its own size plus about 900 MB.
 ```

@@ -45,7 +45,7 @@ def test_process_stats_reads_memory_and_average_cpu(fake_proc):
     fake_proc.add_emulator(4100, "pixel", rss_kb=2048 * 1024,
                            utime=30 * tick, stime=20 * tick, starttime=900 * tick)
 
-    assert abgal.process_stats(4100) == {"mem_mb": 2048, "cpu_percent": 50.0}
+    assert abgal.process_stats(4100) == {"mem_mb": 2048, "cpu_percent": 50.0, "uptime_s": 100}
 
 
 def test_process_stats_survives_a_name_with_parentheses(fake_proc):
@@ -54,7 +54,7 @@ def test_process_stats_survives_a_name_with_parentheses(fake_proc):
     fake_proc.add_process(4300, "odd) (name", ["odd"], rss_kb=1024,
                           utime=10 * tick, stime=0, starttime=990 * tick)
 
-    assert abgal.process_stats(4300) == {"mem_mb": 1, "cpu_percent": 100.0}
+    assert abgal.process_stats(4300) == {"mem_mb": 1, "cpu_percent": 100.0, "uptime_s": 10}
 
 
 def test_process_stats_is_none_for_a_process_that_is_gone(fake_proc):
