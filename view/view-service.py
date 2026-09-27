@@ -807,12 +807,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(415, "text/plain; charset=utf-8",
                                     "expected application/json")
             raw_length = self.headers.get("Content-Length") or "0"
-            if not raw_length.isdigit():
+            if not (raw_length.isascii() and raw_length.isdecimal()):
                 return self.respond(400, "text/plain; charset=utf-8", "bad request")
             length = int(raw_length)
             try:
                 data = json.loads(self.rfile.read(length) or b"{}")
-            except json.JSONDecodeError:
+            except ValueError:
                 return self.respond(400, "text/plain; charset=utf-8", "bad request")
             if not isinstance(data, dict):
                 return self.respond(400, "text/plain; charset=utf-8", "bad request")

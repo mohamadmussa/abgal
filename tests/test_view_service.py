@@ -322,15 +322,23 @@ def test_lifecycle_refuses_a_name_that_is_not_a_string(server, monkeypatch, name
     assert status == 400
 
 
-def test_a_content_length_that_is_not_a_number_is_a_bad_request(server):
+@pytest.mark.parametrize("length", [b"abc", b"\xb2", b"-1"])
+def test_a_content_length_that_is_not_a_number_is_a_bad_request(server, length):
     conn = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
     try:
         conn.putrequest("POST", "/tap", skip_host=True)
         conn.putheader("Host", host_for(server))
         conn.putheader("X-AbGal-Token", TOKEN)
         conn.putheader("Content-Type", "application/json")
-        conn.putheader("Content-Length", "abc")
+        conn.putheader("Content-Length", length)
         conn.endheaders()
         assert conn.getresponse().status == 400
     finally:
         conn.close()
+
+
+def test_a_body_that_is_not_utf8_is_a_bad_request(server):
+    status, _ = request(server, "POST", "/tap", host=host_for(server),
+                        token=TOKEN, content_type="application/json",
+                        body=b'{"a":"\xff"}')
+    assert status == 400
