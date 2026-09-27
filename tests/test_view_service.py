@@ -299,3 +299,27 @@ def test_host_names_compare_without_case(monkeypatch):
             host = "%s:%d" % (name, srv.server_port)
             status, _ = request(srv, "GET", "/guests", host=host, token=TOKEN)
             assert status == 200, name
+
+
+@pytest.mark.parametrize("name", [None, "", ["g1"], 5])
+def test_lifecycle_refuses_a_name_that_is_not_a_string(server, monkeypatch, name):
+    monkeypatch.setattr(view_service, "guest_action",
+                        lambda n, a: pytest.fail("guest_action must not run"))
+    status, _ = request(server, "POST", "/lifecycle", host=host_for(server),
+                        token=TOKEN, content_type="application/json",
+                        body=json.dumps({"name": name, "action": "start"}))
+    assert status == 400
+
+
+def test_a_content_length_that_is_not_a_number_is_a_bad_request(server):
+    conn = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+    try:
+        conn.putrequest("POST", "/tap", skip_host=True)
+        conn.putheader("Host", host_for(server))
+        conn.putheader("X-AbGal-Token", TOKEN)
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", "abc")
+        conn.endheaders()
+        assert conn.getresponse().status == 400
+    finally:
+        conn.close()

@@ -803,7 +803,10 @@ class Handler(BaseHTTPRequestHandler):
             if media != "application/json":
                 return self.respond(415, "text/plain; charset=utf-8",
                                     "expected application/json")
-            length = int(self.headers.get("Content-Length") or 0)
+            raw_length = self.headers.get("Content-Length") or "0"
+            if not raw_length.isdigit():
+                return self.respond(400, "text/plain; charset=utf-8", "bad request")
+            length = int(raw_length)
             try:
                 data = json.loads(self.rfile.read(length) or b"{}")
             except json.JSONDecodeError:
@@ -899,6 +902,8 @@ class Handler(BaseHTTPRequestHandler):
         """
         if action not in ("start", "stop", "restart"):
             return self.respond(400, "text/plain; charset=utf-8", "unknown action")
+        if not isinstance(name, str) or not name:
+            return self.respond(400, "text/plain; charset=utf-8", "bad request")
         with self.server.busy_lock:
             if name in self.server.busy:
                 return self.respond(409, "text/plain; charset=utf-8",
@@ -910,7 +915,7 @@ class Handler(BaseHTTPRequestHandler):
             # abgal's own reason, written for the person at the page.
             return self.respond(409, "text/plain; charset=utf-8", str(e))
         except Exception:
-            log.exception("lifecycle %s %s", action, name)
+            log.exception("lifecycle %s %r", action, name)
             return self.respond(500, "text/plain; charset=utf-8",
                                 "internal error, see the service log")
         finally:
