@@ -44,7 +44,7 @@ wo immer er liegt. Es setzt `ANDROID_HOME`, `ANDROID_SDK_ROOT`,
 Werkzeug, das es aufruft. Nur der Emulator liest `ANDROID_EMULATOR_HOME`, und
 adb liest keine der beiden und behält seine eigenen Dateien in
 `~/.android/`, siehe
-[Fehlerbehebung](troubleshooting.md#files-in-your-home-folder).
+[Fehlerbehebung](troubleshooting.de.md#dateien-in-deinem-home-ordner).
 
 ## Setup und doctor
 
@@ -95,7 +95,7 @@ ab, außer `--yes` ist gesetzt. Dann geht es diese Schritte einmal je AVD:
 Schritt 9 ist der Grund, warum `create` mehr tut als `avdmanager` aufzurufen.
 Dieses Werkzeug lässt mehrere Werte ohne Meldung fallen oder überschreibt sie,
 deshalb gilt ein AVD erst als angelegt, wenn jeder Wert dem der Vorlage
-entspricht. [Vorlagen](templates.md) listet die Werte.
+entspricht. [Vorlagen](templates.de.md) listet die Werte.
 
 Schritt 6 legt den Ordner zuerst an, weil `avdmanager` das AVD wortlos nach
 `android-home/avd` schreibt, wenn `ANDROID_AVD_HOME` auf einen Ordner zeigt, den
@@ -147,7 +147,7 @@ Der Emulator startet immer mit diesen Schaltern:
 | `-no-window`, `-no-audio`, `-no-boot-anim` | Ein AVD läuft ohne Bildschirm und ohne Soundkarte |
 | `-no-metrics` | Ohne ihn fragt der Emulator nach Nutzungsdaten, und eine spätere Version soll anhalten und auf die Antwort warten |
 | `-gpu software` | Rechnet auf dem Prozessor, das geht auf jedem Rechner. `--gpu host` oder `ABGAL_GPU` ändert es |
-| `-lowram` | Siehe [Speicher](#memory) |
+| `-lowram` | Siehe [Speicher](#speicher) |
 | `-no-snapshot-load`, `-no-snapshot-save` | Jeder Start ist ein Kaltstart, damit kein Lauf vom vorigen abhängt |
 | `-prop persist.sys.locale=en-US` | Sprache, aus `--locale` oder `ABGAL_LOCALE` |
 | `-prop persist.sys.timezone=Europe/Berlin` | Zeitzone, aus `--timezone` |

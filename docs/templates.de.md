@@ -102,7 +102,7 @@ source bin/env.sh
 sdk/cmdline-tools/latest/bin/avdmanager list device -c
 ```
 
-Fehlt die Id, siehe [Das Gerät ist nicht gelistet](troubleshooting.md#the-device-is-not-listed).
+Fehlt die Id, siehe [Das Gerät ist nicht gelistet](troubleshooting.de.md#das-gerät-ist-nicht-gelistet).
 
 ### 3. Die Zeile eintragen
 
@@ -123,7 +123,7 @@ andere AVDs, siehe den Eintrag `ram` in der Spaltenliste oben in `devices.conf`.
 
 `create` holt das Systemabbild, wenn eine Vorlage es zum ersten Mal braucht.
 Für API 35 auf x86_64 sind das etwa 3,5 GB. Es endet mit den dreizehn
-Prüfungen aus [Was create setzt](#what-create-sets).
+Prüfungen aus [Was create setzt](#was-create-setzt).
 
 Die Dichte ist der Wert, der stimmen muss. Eine App liefert ihre Bilder als
 ein Split je Dichte aus, und ein AVD mit 420 dpi lädt andere Bilder als
@@ -145,4 +145,4 @@ Haben beide Seiten dieselben Zeilen geändert, markiert git den Konflikt in
 der Datei. Beide Zeilen behalten, die Marker löschen und `./abgal list`
 laufen lassen, um zu sehen, dass jede Vorlage gelesen wird. Braucht sonst
 noch jemand den Bildschirm, ihn als Pull Request schicken, siehe
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+[CONTRIBUTING.de.md](../CONTRIBUTING.de.md).
