@@ -18,6 +18,7 @@ docs/troubleshooting.md.
   abgal stop -n <guest>               stop that guest
   abgal watch -n <guest>              the temperature watch start runs by itself
   abgal webui                         the browser view, open to the network
+  abgal github-runner status          local liveness of the self hosted runners
 
 Only the Python standard library is used. There is nothing to install and
 nothing to package: the file is the program.
@@ -1721,6 +1722,92 @@ def runner_names():
     return sorted(p.stem for p in RUNNERS.glob("*.json"))
 
 
+def svc_status(name):
+    """The host backend's own svc.sh status. It prints "active" for a
+    running service and "inactive" for a stopped one, so no exit code of
+    its own is needed."""
+    svc = runner_dir(name) / "svc.sh"
+    try:
+        done = subprocess.run([str(svc), "status"], capture_output=True,
+                              text=True, timeout=10)
+    except OSError as err:
+        return "svc.sh could not run: %s" % err, False
+    text = (done.stdout + done.stderr).strip()
+    return text or "no output", "active" in text.lower() and "inactive" not in text.lower()
+
+
+def container_engine():
+    """docker or podman, whichever this machine has. docker first."""
+    for engine in ("docker", "podman"):
+        if shutil.which(engine):
+            return engine
+    return None
+
+
+def container_status(engine, container):
+    """The container's own state, read through the engine's own inspect."""
+    try:
+        done = subprocess.run(
+            [engine, "inspect", "--format", "{{.State.Status}}", container],
+            capture_output=True, text=True, timeout=10)
+    except OSError as err:
+        return "%s could not run: %s" % (engine, err), False
+    if done.returncode != 0:
+        return (done.stderr or "not found").strip(), False
+    state = done.stdout.strip()
+    return state, state == "running"
+
+
+def runner_alive(state):
+    """Whether the backend reports this runner as up, and a detail line.
+
+    Reads the backend directly, svc.sh on the host or the container's own
+    state through Docker or Podman. No GitHub query is involved.
+    """
+    if state["backend"] == "host":
+        return svc_status(state["name"])
+    engine = state.get("engine") or container_engine()
+    if not engine:
+        return "neither docker nor podman is on this machine", False
+    return container_status(engine, state.get("container") or state["name"])
+
+
+def cmd_github_runner_status(args):
+    if args.name:
+        if args.name not in runner_names():
+            print("No runner named %s. This machine manages no such runner." % args.name)
+            return 1
+        names = [args.name]
+    else:
+        names = runner_names()
+        if not names:
+            print("This machine manages no runner.")
+            return 0
+
+    # A repeated check over a short span, useful right after create, when the
+    # process or container is up but the log has not shown success yet.
+    deadline = time.time() + max(args.wait, 0)
+    layout = "%-20s %-9s %-6s %s"
+    while True:
+        rows = []
+        all_up = True
+        for name in names:
+            state = read_runner_state(name)
+            if state is None:
+                rows.append((name, "-", "down", "state file missing"))
+                all_up = False
+                continue
+            detail, up = runner_alive(state)
+            rows.append((name, state["backend"], "up" if up else "down", detail))
+            all_up = all_up and up
+        if all_up or time.time() >= deadline:
+            print(layout % ("NAME", "BACKEND", "STATE", "DETAIL"))
+            for row in rows:
+                print(layout % row)
+            return 0 if all_up else 1
+        time.sleep(2)
+
+
 # --------------------------------------------------------------------- entry
 
 
@@ -1736,6 +1823,8 @@ EXAMPLES = """examples:
   abgal stop -n dev-01
   abgal webui
   abgal webui --address 127.0.0.1 --port 8100
+  abgal github-runner status
+  abgal github-runner status -n ci-01 --wait 60
 """
 
 
@@ -1837,6 +1926,19 @@ def build_parser():
                        help="a host name the page may be opened under. Repeatable")
     webui.set_defaults(run=cmd_webui)
 
+    runner = subs.add_parser(
+        "github-runner", help="self hosted GitHub Actions runners, host or container")
+    runner.set_defaults(run=lambda a: runner.print_help() or 0)
+    runner_subs = runner.add_subparsers(dest="runner_command")
+
+    runner_status = runner_subs.add_parser(
+        "status", help="local liveness of one runner or every runner")
+    runner_status.add_argument("-n", "--name", metavar="RUNNER",
+                               help="only this runner. Without it, every runner")
+    runner_status.add_argument("--wait", type=int, default=0, metavar="SECONDS",
+                               help="repeat the check for this long, useful right after create")
+    runner_status.set_defaults(run=cmd_github_runner_status)
+
     return parser
 
 
@@ -1855,7 +1957,7 @@ def main():
     # runs first. Everything else talks to the SDK, and a missing SDK there is
     # worth saying plainly instead of letting adb fail with a path nobody
     # recognises.
-    if args.command not in ("list", "setup", "doctor") and (
+    if args.command not in ("list", "setup", "doctor", "github-runner") and (
             not ADB.is_file() or not EMULATOR.is_file()):
         fail("the Android SDK is not under %s.\n"
              "       Both platform-tools/adb and emulator/emulator have to be there.\n"
