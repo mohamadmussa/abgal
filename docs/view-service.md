@@ -105,9 +105,11 @@ literal address cannot be rebound and a name has to be allowed on purpose.
 An Origin header, when sent, must match the Host header.
 
 POST bodies must be `application/json`. Text sent from TEXT reaches the
-guest as one quoted word, control characters are refused. Errors reach the
-page only as a generic message, the details stay in the service's own log
-output. Only one start, stop or restart per guest runs at a time, a second
+guest as one quoted word, control characters are refused. Unexpected
+errors reach the page only as a generic message, the details stay in the
+service's own log output. When `abgal` refuses a start, stop or restart,
+for example for lack of memory, the page shows `abgal`'s own reason with
+409. Only one start, stop or restart per guest runs at a time, a second
 one gets 409.
 
 This does not protect against everything. Anyone who can open the page can

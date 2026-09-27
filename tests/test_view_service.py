@@ -258,3 +258,17 @@ def test_lifecycle_lock_refuses_a_second_call_for_the_same_guest(server, monkeyp
     assert results["g1"] == 200
     assert results["g2"] == 200
     assert server.busy == set()
+
+
+def test_lifecycle_passes_abgals_reason_to_the_page(server, monkeypatch):
+    def refuse(name, action):
+        raise view_service.GuestActionError("not enough free memory to start g1")
+
+    monkeypatch.setattr(view_service, "guest_action", refuse)
+    status, body = request(server, "POST", "/lifecycle", host=host_for(server),
+                           token=TOKEN, content_type="application/json",
+                           body=json.dumps({"name": "g1", "action": "start"}))
+
+    assert status == 409
+    assert body == "not enough free memory to start g1"
+    assert server.busy == set()

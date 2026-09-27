@@ -112,9 +112,11 @@ gesendet wird, zum Host-Header passen.
 
 POST-Körper müssen `application/json` sein. Text aus TEXT erreicht das
 AVD als ein einziges zitiertes Wort, Steuerzeichen werden abgelehnt.
-Fehler erreichen die Seite nur als allgemeine Meldung, die Einzelheiten
-stehen in der eigenen Log-Ausgabe des Dienstes. Je AVD läuft nur ein
-Start, Stopp oder Neustart gleichzeitig, ein zweiter bekommt 409.
+Unerwartete Fehler erreichen die Seite nur als allgemeine Meldung, die
+Einzelheiten stehen in der eigenen Log-Ausgabe des Dienstes. Lehnt
+`abgal` einen Start, Stopp oder Neustart ab, etwa wegen zu wenig
+Speicher, zeigt die Seite `abgal`s eigenen Grund mit 409. Je AVD läuft
+nur ein Start, Stopp oder Neustart gleichzeitig, ein zweiter bekommt 409.
 
 Das schützt nicht gegen alles. Wer die Seite öffnen kann, kann sie
 benutzen, das Token ist kein Login und es gibt kein Benutzerkonto. Der

@@ -139,6 +139,10 @@ def guest_rows():
     return guest_status()["guests"]
 
 
+class GuestActionError(RuntimeError):
+    """abgal refused or did not finish an action, the text is meant for the page."""
+
+
 def guest_action(name, action):
     """Runs abgal start, stop or restart for one guest, blocking.
 
@@ -161,12 +165,12 @@ def guest_action(name, action):
                 capture_output=True, timeout=timeout,
             )
         except subprocess.TimeoutExpired:
-            raise RuntimeError(
+            raise GuestActionError(
                 "abgal %s did not answer within %d s, %s may still be under way"
                 % (extra_args[0], timeout, name)
             )
         if result.returncode != 0:
-            raise RuntimeError(
+            raise GuestActionError(
                 result.stderr.decode("utf-8", "replace").strip()
                 or result.stdout.decode("utf-8", "replace").strip()
             )
@@ -894,6 +898,9 @@ class Handler(BaseHTTPRequestHandler):
             self.server.busy.add(name)
         try:
             guest_action(name, action)
+        except GuestActionError as e:
+            # abgal's own reason, written for the person at the page.
+            return self.respond(409, "text/plain; charset=utf-8", str(e))
         except Exception:
             log.exception("lifecycle %s %s", action, name)
             return self.respond(500, "text/plain; charset=utf-8",
