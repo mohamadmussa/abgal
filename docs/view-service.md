@@ -9,6 +9,19 @@ keyboard, and start, stop or restart it without touching a terminal.
 ## Starting it
 
 ```bash
+./abgal webui
+```
+
+`abgal webui` starts `view/view-service.py` and passes `--address`,
+`--port`, `--guest` and `--allow-host` through. It listens on `0.0.0.0`,
+every interface, so the page opens from another machine on the network, and
+it prints a warning at every start that says so, see
+[Security](#security). `./abgal webui --address 127.0.0.1` keeps it on this
+machine.
+
+The script can also be started directly, and then listens on loopback:
+
+```bash
 python3 view/view-service.py
 ```
 
@@ -122,10 +135,11 @@ use it, the token is not a login and there is no user account. Traffic is
 plain HTTP without encryption, so another machine on the path in the same
 network can read it, including the token. Binding to another interface
 with `--address` therefore gives everyone who can reach that address full
-control of every guest.
+control of every guest. `abgal webui` does exactly that by default.
 
-Keep the default loopback address, or reach the service through an SSH
-tunnel instead.
+Use `abgal webui` on a network where everyone who can reach the machine may
+control its guests. Anywhere else, pass `--address 127.0.0.1`, or start the
+script directly, and reach the service through an SSH tunnel instead.
 
 ## What it needs
 

@@ -10,6 +10,19 @@ starten, zu stoppen oder neu zu starten, ohne ein Terminal zu berühren.
 ## Starten
 
 ```bash
+./abgal webui
+```
+
+`abgal webui` startet `view/view-service.py` und reicht `--address`,
+`--port`, `--guest` und `--allow-host` durch. Es lauscht auf `0.0.0.0`,
+also auf jeder Schnittstelle, damit die Seite auch von einem anderen
+Rechner im Netzwerk aufgeht, und sagt das bei jedem Start als Warnung,
+siehe [Sicherheit](#sicherheit). `./abgal webui --address 127.0.0.1` hält
+es auf diesem Rechner.
+
+Das Skript lässt sich auch direkt starten und lauscht dann auf Loopback:
+
+```bash
 python3 view/view-service.py
 ```
 
@@ -131,10 +144,12 @@ Datenverkehr läuft als reines HTTP ohne Verschlüsselung, ein anderer
 Rechner auf dem Weg im selben Netzwerk kann ihn mitlesen, das Token
 eingeschlossen. Eine Bindung an eine andere Schnittstelle mit `--address`
 gibt daher jedem, der diese Adresse erreichen kann, die volle Kontrolle
-über jedes AVD.
+über jedes AVD. `abgal webui` tut genau das von sich aus.
 
-Standardmäßig bei der Loopback-Adresse bleiben, oder den Dienst über
-einen SSH-Tunnel erreichen.
+`abgal webui` in einem Netzwerk benutzen, in dem jeder, der den Rechner
+erreicht, dessen AVDs steuern darf. Überall sonst `--address 127.0.0.1`
+mitgeben, oder das Skript direkt starten, und den Dienst über einen
+SSH-Tunnel erreichen.
 
 ## Was es braucht
 

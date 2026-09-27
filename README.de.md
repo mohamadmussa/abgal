@@ -150,9 +150,10 @@ Start.
 - **Keine Gerätefarm.** `view/view-service.py` zeigt die AVDs eines
   Rechners im Browser, man kann sie antippen, darin tippen, sie starten und
   stoppen, siehe
-  [Ansicht und Steuerung aus dem Browser](docs/view-service.de.md). Von sich
-  aus lauscht es nur auf loopback. Es gibt keine Benutzer, keine
-  Warteschlange und keinen zweiten Rechner.
+  [Ansicht und Steuerung aus dem Browser](docs/view-service.de.md).
+  `abgal webui` öffnet es ins Netzwerk, und wer es erreicht, steuert jedes
+  AVD. Es gibt keine Benutzer, keine Warteschlange und keinen zweiten
+  Rechner.
 - **Kein Testwerkzeug.** AbGal macht AVDs bereit. Getestet wird dann mit
   Maestro, Espresso, Appium oder schlicht `adb`.
 - **Nicht für echte Geräte.** Es legt nur Emulatoren an und fährt sie.

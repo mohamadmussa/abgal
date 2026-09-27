@@ -17,6 +17,7 @@ docs/troubleshooting.md.
   abgal status                        what is on disk and what is running
   abgal stop -n <guest>               stop that guest
   abgal watch -n <guest>              the temperature watch start runs by itself
+  abgal webui                         the browser view, open to the network
 
 Only the Python standard library is used. There is nothing to install and
 nothing to package: the file is the program.
@@ -1639,6 +1640,42 @@ def cmd_setup(args):
     return 0
 
 
+# --------------------------------------------------------------------- webui
+
+
+VIEW_SERVICE = HOME / "view" / "view-service.py"
+LOOPBACK = ("127.0.0.1", "::1", "localhost")
+
+
+def webui_command(args):
+    """The command line for view-service.py. Options not given are left out,
+    so the service keeps its own defaults for them."""
+    command = [sys.executable, str(VIEW_SERVICE), "--address", args.address]
+    if args.port is not None:
+        command += ["--port", str(args.port)]
+    if args.guest:
+        command += ["--guest", args.guest]
+    for name in args.allow_host:
+        command += ["--allow-host", name]
+    return command
+
+
+def cmd_webui(args):
+    if not VIEW_SERVICE.is_file():
+        fail("%s is missing." % VIEW_SERVICE)
+    # The token is no login and the traffic is plain HTTP, see
+    # docs/view-service.md. Said at every start, since the default is open.
+    if args.address not in LOOPBACK:
+        print("warning: listening on %s. Anyone who can reach this address can\n"
+              "         start, stop and control every guest. Pass --address 127.0.0.1\n"
+              "         to keep it on this machine." % args.address)
+    try:
+        return subprocess.run(webui_command(args)).returncode
+    except KeyboardInterrupt:
+        # The service got the same Ctrl-C and has printed that it stopped.
+        return 0
+
+
 # --------------------------------------------------------------------- entry
 
 
@@ -1652,6 +1689,8 @@ EXAMPLES = """examples:
   abgal start -n dev-01 --gpu host --locale ar-SA
   abgal status
   abgal stop -n dev-01
+  abgal webui
+  abgal webui --address 127.0.0.1 --port 8100
 """
 
 
@@ -1741,6 +1780,17 @@ def build_parser():
     watch.add_argument("-n", "--name", metavar="GUEST",
                        help="only this guest, by name or by id. Without it, every guest")
     watch.set_defaults(run=cmd_watch)
+
+    webui = subs.add_parser("webui", help="start the browser view, reachable from the network")
+    webui.add_argument("--address", default="0.0.0.0",
+                       help="the interface to listen on. 127.0.0.1 keeps it on this machine")
+    webui.add_argument("--port", type=int,
+                       help="the port. Without it the view service picks its own, 8099")
+    webui.add_argument("--guest", metavar="GUEST",
+                       help="a running guest to show first")
+    webui.add_argument("--allow-host", action="append", default=[], metavar="NAME",
+                       help="a host name the page may be opened under. Repeatable")
+    webui.set_defaults(run=cmd_webui)
 
     return parser
 
