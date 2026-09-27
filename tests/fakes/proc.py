@@ -18,7 +18,6 @@ class FakeProc:
     def __init__(self, root, uptime=1000.0, available_kb=8 * 1024 * 1024):
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
-        (self.root / "self").mkdir(exist_ok=True)
         self.set_uptime(uptime)
         self.set_available(available_kb)
 
