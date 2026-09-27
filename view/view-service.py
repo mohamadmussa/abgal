@@ -700,6 +700,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.path.split("?")[0].strip("/")
 
     def host_ok(self, hostname):
+        # Browsers send the host lower case, so every side is compared so.
+        hostname = hostname.lower()
         if hostname == "localhost":
             return True
         try:
@@ -707,7 +709,7 @@ class Handler(BaseHTTPRequestHandler):
             return True
         except ValueError:
             pass
-        return hostname in self.server.allow_hosts
+        return hostname in {h.lower() for h in self.server.allow_hosts}
 
     def refused(self):
         """Checks Host, Origin and the token, before any route runs.
@@ -720,7 +722,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         host_header = self.headers.get("Host")
         if not host_header:
-            self.respond(403, "text/plain; charset=utf-8", "forbidden")
+            self.respond(403, "text/plain; charset=utf-8", "forbidden, no Host header")
             return True
         hostname = host_header
         if hostname.startswith("["):
@@ -728,14 +730,17 @@ class Handler(BaseHTTPRequestHandler):
         else:
             hostname = hostname.split(":")[0]
         if not self.host_ok(hostname):
-            self.respond(403, "text/plain; charset=utf-8", "forbidden")
+            self.respond(403, "text/plain; charset=utf-8",
+                         "forbidden, host %r is not allowed, start the service "
+                         "with --allow-host %s" % (hostname, hostname))
             return True
 
         origin = self.headers.get("Origin")
         if origin:
             origin_host = origin.split("://", 1)[-1]
             if origin_host != host_header:
-                self.respond(403, "text/plain; charset=utf-8", "forbidden")
+                self.respond(403, "text/plain; charset=utf-8",
+                             "forbidden, Origin does not match Host")
                 return True
 
         p = self.route()
@@ -747,7 +752,10 @@ class Handler(BaseHTTPRequestHandler):
         # Compared as bytes, compare_digest raises on a non ASCII str.
         given = self.headers.get("X-AbGal-Token", "").encode("utf-8", "replace")
         if not hmac.compare_digest(given, self.server.token.encode()):
-            self.respond(403, "text/plain; charset=utf-8", "forbidden")
+            # The usual cause is a tab left open across a restart of the
+            # service, which made a new token.
+            self.respond(403, "text/plain; charset=utf-8",
+                         "forbidden, token does not match, reload the page")
             return True
         return False
 

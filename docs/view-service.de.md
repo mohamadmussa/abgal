@@ -118,6 +118,13 @@ Einzelheiten stehen in der eigenen Log-Ausgabe des Dienstes. Lehnt
 Speicher, zeigt die Seite `abgal`s eigenen Grund mit 409. Je AVD läuft
 nur ein Start, Stopp oder Neustart gleichzeitig, ein zweiter bekommt 409.
 
+Jede Ablehnung mit 403 sagt, was zu tun ist. Ein Tab, der über einen
+Neustart des Dienstes offen blieb, hat ein altes Token und bekommt
+„reload the page“, also die Seite neu laden. Wer die Seite über einen
+Rechnernamen öffnet, bekommt den passenden `--allow-host`-Aufruf genannt.
+Rechnernamen werden ohne Rücksicht auf Groß- und Kleinschreibung
+verglichen.
+
 Das schützt nicht gegen alles. Wer die Seite öffnen kann, kann sie
 benutzen, das Token ist kein Login und es gibt kein Benutzerkonto. Der
 Datenverkehr läuft als reines HTTP ohne Verschlüsselung, ein anderer

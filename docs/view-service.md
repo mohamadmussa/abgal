@@ -112,6 +112,11 @@ for example for lack of memory, the page shows `abgal`'s own reason with
 409. Only one start, stop or restart per guest runs at a time, a second
 one gets 409.
 
+Every 403 says what to do. A tab left open across a restart of the
+service holds an old token and is told to reload the page. Opening the
+page through a host name names the `--allow-host` call it needs. Host
+names are compared without regard to case.
+
 This does not protect against everything. Anyone who can open the page can
 use it, the token is not a login and there is no user account. Traffic is
 plain HTTP without encryption, so another machine on the path in the same

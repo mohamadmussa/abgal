@@ -272,3 +272,30 @@ def test_lifecycle_passes_abgals_reason_to_the_page(server, monkeypatch):
     assert status == 409
     assert body == "not enough free memory to start g1"
     assert server.busy == set()
+
+
+def test_each_refusal_says_what_to_do(server, monkeypatch):
+    monkeypatch.setattr(view_service, "guest_status",
+                        lambda: {"guests": [], "free_mb": 1})
+    host = host_for(server)
+
+    _, body = request(server, "GET", "/guests", host=host, token="old")
+    assert "reload the page" in body
+
+    _, body = request(server, "GET", "/guests",
+                      host="box:%d" % server.server_port, token=TOKEN)
+    assert "--allow-host box" in body
+
+    _, body = request(server, "GET", "/guests", host=host, token=TOKEN,
+                      origin="http://evil.example")
+    assert "Origin" in body
+
+
+def test_host_names_compare_without_case(monkeypatch):
+    monkeypatch.setattr(view_service, "guest_status",
+                        lambda: {"guests": [], "free_mb": 1})
+    with running_server(TOKEN, allow_hosts=("MyBox",)) as srv:
+        for name in ("mybox", "MyBox", "LOCALHOST"):
+            host = "%s:%d" % (name, srv.server_port)
+            status, _ = request(srv, "GET", "/guests", host=host, token=TOKEN)
+            assert status == 200, name
