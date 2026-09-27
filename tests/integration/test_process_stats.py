@@ -12,6 +12,7 @@ def test_process_stats_of_the_running_test_process():
     assert stats is not None
     assert stats["mem_mb"] > 0
     assert stats["cpu_percent"] >= 0
+    assert stats["uptime_s"] >= 0
 
 
 def test_process_stats_of_a_gone_process_is_none():

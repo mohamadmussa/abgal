@@ -67,6 +67,12 @@ the row's right end expands it, showing the guest's name, template, id,
 | Stop | the guest has a process | `abgal stop` |
 | Restart | the guest has a process | `abgal stop`, then `abgal start` |
 
+The list also shows every device `adb devices` sees that `abgal` does not
+know about, a phone or tablet on USB or over `adb connect`. Such a row can
+be selected and driven the same way as a guest once it reports `device`,
+but carries no Start, Stop or Restart, real hardware is not `abgal`'s to
+switch on or off.
+
 A start can take up to ten minutes in the worst case, `abgal` waits up to
 five minutes for the console and again up to five minutes for boot, one
 after another. A stop or the stop half of a restart takes at most about a
@@ -148,3 +154,23 @@ stop and restart, and `adb` for everything that touches a selected guest's
 screen or input. The service keeps no guest state of its own beyond which
 one is currently selected, `abgal status --json` is asked again on every
 guest list refresh.
+
+## Publishing through k3s
+
+`helm/abgal-view` is a chart that publishes an already running
+`view-service.py` through the Traefik a k3s cluster already runs, with a
+login in front of it, rather than opening `--address 0.0.0.0` straight to
+the network. `view-service.py` itself still runs as a plain process on the
+host, the chart only describes the route to it.
+
+```bash
+cd helm
+cp host.example.yaml host.local.yaml   # fill in the two values it asks for
+bash make-auth.sh                      # writes the login hash to auth.local.yaml
+bash apply.sh
+```
+
+`host.local.yaml` and `auth.local.yaml` hold values that belong to one
+machine, the address of the bridge a pod reaches the host on and the
+password hash, and are never committed. `apply.sh` checks that the route
+answers 401 without a password before it reports success.

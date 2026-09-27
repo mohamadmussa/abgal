@@ -1,0 +1,47 @@
+# Publishes the view of the Android emulator through the Traefik that k3s
+# already runs.
+#
+# The emulator itself runs as a process on the host, not as a pod. This chart
+# therefore describes only the route to it, not the emulator.
+#
+# No value here belongs to one particular machine. Address and host name come
+# from host.local.yaml, the password from auth.local.yaml. Neither is ever
+# committed. Template: host.example.yaml.
+
+namespace:
+  # Shown in the notes after install. The namespace itself is created by
+  # "helm --create-namespace", see apply.sh.
+  name: abgal
+
+host:
+  # Address of the bridge a pod reaches the host on, not the one on the LAN.
+  # Belongs in host.local.yaml because it depends on the cluster.
+  address: ""
+
+  # Port the view service listens on. The chart only needs the number, not
+  # which service answers there.
+  port: 8099
+
+route:
+  # Name this machine resolves under inside its own network. Belongs in
+  # host.local.yaml, because it names exactly one machine.
+  hostname: ""
+
+  # Path the view hangs under. It is stripped before the request is passed on,
+  # so the service behind it need not know it is published under a path.
+  path: "/emulator"
+
+  # web is port 80, websecure is port 443. Both are already taken by Traefik.
+  entryPoints:
+    - web
+    - websecure
+
+auth:
+  user: "admin"
+
+  # The hash, not the password.
+  #
+  # A plain password would end up in the values of the Helm release and anyone
+  # with "helm get values" could read it. The hash is produced by make-auth.sh,
+  # which writes it to auth.local.yaml.
+  hash: ""

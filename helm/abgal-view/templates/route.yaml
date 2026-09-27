@@ -1,0 +1,24 @@
+{{- $name := include "abgal-view.fullname" . -}}
+{{- if not .Values.route.hostname -}}
+{{- fail "route.hostname is empty. Copy host.example.yaml to host.local.yaml and fill it in." -}}
+{{- end -}}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "abgal-view.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    {{- toYaml .Values.route.entryPoints | nindent 4 }}
+  routes:
+    - kind: Rule
+      match: Host(`{{ .Values.route.hostname }}`) && PathPrefix(`{{ .Values.route.path }}`)
+      # Order matters. Traefik works the list top down, so the request is
+      # authenticated first and the path is stripped after that.
+      middlewares:
+        - name: {{ $name }}-auth
+        - name: {{ $name }}-path
+      services:
+        - name: {{ $name }}
+          port: {{ .Values.host.port }}
