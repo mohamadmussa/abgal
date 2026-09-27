@@ -38,13 +38,16 @@ def test_status_with_an_unknown_name_fails(runners, capsys):
 
 
 def test_status_host_backend_up(runners, monkeypatch, capsys):
-    abgal.write_runner_state("ci-01", {"name": "ci-01", "backend": "host"})
-    monkeypatch.setattr(abgal.subprocess, "run", lambda *a, **k: done(stdout="active (running)\n"))
+    abgal.write_runner_state("ci-01", {"name": "ci-01", "backend": "host", "version": "2.337.0"})
+    text = "Active: active (running) since Sat 2026-09-27 08:00:00 UTC; 2h 15min ago\n"
+    monkeypatch.setattr(abgal.subprocess, "run", lambda *a, **k: done(stdout=text))
 
     assert abgal.cmd_github_runner_status(args(name="ci-01")) == 0
 
     out = capsys.readouterr().out
-    assert "ci-01" in out and "up" in out
+    assert "ci-01" in out and "up" in out and "2.337.0" in out
+    assert "2h 15min" in out
+    assert "since" not in out.split("\n")[1]
 
 
 def test_status_host_backend_down(runners, monkeypatch, capsys):
@@ -57,12 +60,17 @@ def test_status_host_backend_down(runners, monkeypatch, capsys):
 
 
 def test_status_container_backend_reads_engine_state(runners, monkeypatch, capsys):
-    abgal.write_runner_state("ci-02", {"name": "ci-02", "backend": "container", "engine": "docker"})
-    monkeypatch.setattr(abgal.subprocess, "run", lambda *a, **k: done(stdout="running\n"))
+    abgal.write_runner_state("ci-02", {"name": "ci-02", "backend": "container", "engine": "docker",
+                                       "labels": "linux,x64"})
+    started = (abgal.datetime.datetime.utcnow() - abgal.datetime.timedelta(minutes=40))
+    monkeypatch.setattr(abgal.subprocess, "run",
+                        lambda *a, **k: done(stdout="running|%sZ\n" % started.strftime("%Y-%m-%dT%H:%M:%S")))
 
     assert abgal.cmd_github_runner_status(args(name="ci-02")) == 0
 
-    assert "up" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "up" in out and "linux,x64" in out
+    assert "00:00:39" in out or "00:00:40" in out
 
 
 def test_status_without_a_name_lists_every_runner(runners, monkeypatch, capsys):
