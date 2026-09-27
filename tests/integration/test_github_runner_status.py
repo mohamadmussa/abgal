@@ -73,6 +73,17 @@ def test_status_container_backend_reads_engine_state(runners, monkeypatch, capsy
     assert "00:00:39" in out or "00:00:40" in out
 
 
+def test_status_labels_wider_than_the_fixed_guess_stay_in_their_column(runners, monkeypatch, capsys):
+    abgal.write_runner_state("ci-01", {"name": "ci-01", "backend": "container", "engine": "docker",
+                                       "labels": "self-hosted,linux,x64"})
+    monkeypatch.setattr(abgal.subprocess, "run", lambda *a, **k: done(stdout="running|\n"))
+
+    assert abgal.cmd_github_runner_status(args(name="ci-01")) == 0
+
+    header, row = capsys.readouterr().out.splitlines()[:2]
+    assert header.index("DETAIL") == row.index("running")
+
+
 def test_status_without_a_name_lists_every_runner(runners, monkeypatch, capsys):
     abgal.write_runner_state("ci-01", {"name": "ci-01", "backend": "host"})
     abgal.write_runner_state("ci-02", {"name": "ci-02", "backend": "host"})

@@ -2212,14 +2212,17 @@ def cmd_github_runner_status(args):
     # A repeated check over a short span, useful right after create, when the
     # process or container is up but the log has not shown success yet.
     deadline = time.time() + max(args.wait, 0)
-    layout = "%-20s %-9s %-6s %-8s %-7s %-14s %s"
+    layout = "%-20s %-9s %-6s %-8s %-7s %-*s %s"
     while True:
         results = [runner_status_row(name) for name in names]
         all_up = all(up for _, up in results)
         if all_up or time.time() >= deadline:
-            print(layout % ("NAME", "BACKEND", "STATE", "VERSION", "UPTIME", "LABELS", "DETAIL"))
+            # Labels are free text with no length limit of their own, so the
+            # column is sized to the widest one actually shown, not a guess.
+            width = max([len("LABELS")] + [len(row[5]) for row, _ in results])
+            print(layout % ("NAME", "BACKEND", "STATE", "VERSION", "UPTIME", width, "LABELS", "DETAIL"))
             for row, _ in results:
-                print(layout % row)
+                print(layout % (row[:5] + (width, row[5], row[6])))
             return 0 if all_up else 1
         time.sleep(2)
 
