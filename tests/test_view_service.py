@@ -311,6 +311,11 @@ def test_host_names_compare_without_case(monkeypatch):
             status, _ = request(srv, "GET", "/guests", host=host, token=TOKEN)
             assert status == 200, name
 
+        status, _ = request(srv, "GET", "/guests",
+                            host="LocalHost:%d" % srv.server_port, token=TOKEN,
+                            origin="http://localhost:%d" % srv.server_port)
+        assert status == 200
+
 
 @pytest.mark.parametrize("name", [None, "", ["g1"], 5])
 def test_lifecycle_refuses_a_name_that_is_not_a_string(server, monkeypatch, name):

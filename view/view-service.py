@@ -740,7 +740,7 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if origin:
             origin_host = origin.split("://", 1)[-1]
-            if origin_host != host_header:
+            if origin_host.lower() != host_header.lower():
                 self.respond(403, "text/plain; charset=utf-8",
                              "forbidden, Origin does not match Host, open the "
                              "page at the address the service printed")
