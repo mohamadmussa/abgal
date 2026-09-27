@@ -13,6 +13,7 @@ Schritten von einem frischen Klon zu einem laufenden Android Virtual Device
 | [Fehlerbehebung](troubleshooting.de.md) | ein Befehl mit `ERROR` geendet hat |
 | [Ansicht und Steuerung aus dem Browser](view-service.de.md) | du die Web-Oberfläche nutzen oder verstehen willst, wie sie heute funktioniert |
 | [Dashboard Design](dashboard-design.de.md) | du das Ziellayout der Web-Oberfläche kennen willst |
+| [GitHub Actions Runner](github-runner.de.md) | du einen selbst gehosteten Runner neben deinen AVDs willst |
 
 ## Das Leben eines AVD
 
