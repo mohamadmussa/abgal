@@ -43,8 +43,14 @@ für einen Runner, der gar nicht in der Datei steht.
 `runner-versions.conf`, packt ihn unter `runners/<name>` aus, führt dessen
 eigenes `config.sh` zur Registrierung aus, dann `svc.sh install` und
 `svc.sh start`. `remove` führt genauso `svc.sh stop`, `svc.sh uninstall`
-und `config.sh remove` aus. `status` liest `svc.sh status` direkt, ohne
-GitHub Abfrage.
+und `config.sh remove` aus. `status` liest `svc.sh status`, ohne GitHub
+Abfrage. `config.sh` läuft als der Nutzer, unter dem abgal selbst läuft, und
+verweigert Root. `svc.sh` ist der eigene systemd-Wrapper des Runners und
+verweigert für jeden seiner Befehle, auch `status`, jeden anderen Nutzer als
+Root. abgal führt `svc.sh` deshalb immer über `sudo` aus, unabhängig davon
+wie abgal selbst gestartet wurde, sodass create, remove und jede
+status-Abfrage nach einem sudo-Passwort fragen können, außer das Konto hat
+passwortloses sudo dafür eingerichtet.
 
 **Container.** `create` verweigert den Start, wenn abgal selbst schon in
 einem Container läuft, verschachtelte Container werden nicht unterstützt.
@@ -100,4 +106,4 @@ siehe die offenen Punkte in Issue #98.
 | Runner Version | Backend | Container Engine | Host OS | Ergebnis |
 |---|---|---|---|---|
 | 2.337.0 | container | Docker 20.10.24 | Debian 12 (bookworm) | Registriert sich, zeigt "Listening for Jobs", meldet sich bei remove sauber ab und räumt auf |
-| 2.337.0 | host | entfällt | noch nicht geprüft | |
+| 2.337.0 | host | entfällt | Debian 12 (bookworm) | Registriert sich, zeigt "Listening for Jobs", meldet sich bei remove sauber ab und räumt auf, sudo nötig für create und remove |

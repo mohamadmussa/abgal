@@ -41,7 +41,13 @@ file at all.
 `runner-versions.conf`, unpacks it under `runners/<name>`, runs its own
 `config.sh` to register, then `svc.sh install` and `svc.sh start`. `remove`
 runs `svc.sh stop`, `svc.sh uninstall` and `config.sh remove` the same way.
-`status` reads `svc.sh status` directly, no GitHub query involved.
+`status` reads `svc.sh status`, no GitHub query involved. `config.sh` runs
+as whichever user abgal itself runs as, and refuses to run as root; `svc.sh`
+is the runner's own systemd wrapper and refuses to run as anyone but root,
+for every one of its own commands including `status`. abgal therefore always
+runs `svc.sh` through `sudo`, regardless of how abgal itself was started, so
+create, remove and every status check may prompt for a sudo password unless
+the account has passwordless sudo set up for it.
 
 **Container.** `create` refuses to run when abgal itself is already inside
 a container, nested containers are not supported. It pulls the runner
@@ -93,4 +99,4 @@ issue #98.
 | Runner version | Backend | Container engine | Host OS | Result |
 |---|---|---|---|---|
 | 2.337.0 | container | Docker 20.10.24 | Debian 12 (bookworm) | Registers, shows "Listening for Jobs", deregisters and cleans up on remove |
-| 2.337.0 | host | not applicable | not yet verified | |
+| 2.337.0 | host | not applicable | Debian 12 (bookworm) | Registers, shows "Listening for Jobs", deregisters and cleans up on remove, sudo required for create and remove |
