@@ -31,6 +31,8 @@ app.conf
 !docs/troubleshooting.de.md
 !docs/dashboard-design.de.md
 !docs/view-service.de.md
+!README.de.md
+!CONTRIBUTING.de.md
 
 # Local files and folders of any kind.
 *.local.*
