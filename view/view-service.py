@@ -6,24 +6,32 @@ the same machine. Pass --address to bind to a different interface if the
 service needs to be reached from elsewhere.
 
   python3 view-service.py [--guest name] [--address 127.0.0.1]
-                          [--port 8099] [--step 2]
+                          [--port 8099] [--step 2] [--allow-host name]
 
 The page lists every guest abgal knows about and a viewer can switch
 between them without restarting this service. --guest only preselects one
-that is already running, it does not have to be given.
+that is already running, it does not have to be given. Every request past
+the page itself needs a per run token that the page reads from its own
+head and sends back in a header.
 
 The image is fetched raw and resized and packed here. Measured on 2026-09-21:
 the PNG from the device costs 1.34 s per frame, fetching raw and halving it
 costs 0.73 s. No extra library is needed for that, zlib is enough.
 """
 import argparse
+import hmac
+import ipaddress
 import json
+import logging
+import secrets
 import struct
 import subprocess
 import threading
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+log = logging.getLogger("view-service")
 
 # abgal sits one folder up from this file, and is the one place guest state
 # is read from, see docs/architecture.md. This script never reads avd/ or
@@ -97,7 +105,14 @@ class Device:
 
     def type_text(self, word):
         # input text does not understand spaces, %s stands in for one.
-        self.adb("shell", "input", "text", word.replace(" ", "%s"))
+        for ch in word:
+            if ord(ch) < 32 or ord(ch) == 127:
+                raise ValueError("control character in text")
+        s = word.replace(" ", "%s")
+        # adb shell hands its arguments to a shell on the device, so the
+        # text has to arrive there as a single quoted word.
+        quoted = "'" + s.replace("'", "'\\''") + "'"
+        self.adb("shell", "input", "text", quoted)
 
     def size(self):
         if not self.width:
@@ -124,6 +139,10 @@ def guest_rows():
     return guest_status()["guests"]
 
 
+class GuestActionError(RuntimeError):
+    """abgal refused or did not finish an action, the text is meant for the page."""
+
+
 def guest_action(name, action):
     """Runs abgal start, stop or restart for one guest, blocking.
 
@@ -146,12 +165,12 @@ def guest_action(name, action):
                 capture_output=True, timeout=timeout,
             )
         except subprocess.TimeoutExpired:
-            raise RuntimeError(
+            raise GuestActionError(
                 "abgal %s did not answer within %d s, %s may still be under way"
                 % (extra_args[0], timeout, name)
             )
         if result.returncode != 0:
-            raise RuntimeError(
+            raise GuestActionError(
                 result.stderr.decode("utf-8", "replace").strip()
                 or result.stdout.decode("utf-8", "replace").strip()
             )
@@ -184,6 +203,7 @@ PAGE = """<!doctype html>
 <meta charset="utf-8">
 <title>Emulator</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="abgal-token" content="__ABGAL_TOKEN__">
 <style>
   :root { color-scheme: dark; --bg:#16181d; --field:#20242c; --border:#333944;
           --text:#e6e9ef; --muted:#9aa3b2; --accent:#5b9cf8;
@@ -352,6 +372,15 @@ const debugLogEl = document.getElementById("debug-log");
 let step = 2, loading = false, lastMs = 0, selected = null;
 let lastRows = [], expanded = new Set(), debugLines = [];
 const pending = new Map();
+const TOKEN = document.querySelector('meta[name="abgal-token"]').content;
+
+// A plain cross site form or fetch cannot set this header without a CORS
+// preflight, and this server never answers a preflight with permission,
+// so only the page itself can produce a request that carries it.
+function api(route, opts = {}) {
+  opts.headers = Object.assign({ "X-AbGal-Token": TOKEN }, opts.headers || {});
+  return fetch(route, opts);
+}
 
 function report(t) { statusEl.textContent = t; }
 
@@ -453,7 +482,7 @@ function renderGuests(rows) {
 
 async function refreshGuests() {
   try {
-    const a = await fetch("guests?t=" + Date.now());
+    const a = await api("guests?t=" + Date.now());
     if (!a.ok) throw new Error(await a.text());
     const data = await a.json();
     selected = data.selected;
@@ -470,7 +499,7 @@ async function refreshGuests() {
 
 async function selectGuest(name) {
   try {
-    const a = await fetch("switch", {
+    const a = await api("switch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name })
@@ -489,7 +518,7 @@ async function runLifecycle(name, action, verb) {
   pending.set(name, verb);
   renderGuests(lastRows);
   try {
-    const a = await fetch("lifecycle", {
+    const a = await api("lifecycle", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, action })
@@ -511,7 +540,7 @@ async function fetchFrame() {
   loading = true;
   const start = performance.now();
   try {
-    const a = await fetch("frame.png?s=" + step + "&t=" + Date.now());
+    const a = await api("frame.png?s=" + step + "&t=" + Date.now());
     if (!a.ok) throw new Error(await a.text());
     const prev = img.src;
     img.src = URL.createObjectURL(await a.blob());
@@ -529,7 +558,7 @@ async function fetchFrame() {
 
 async function send(route, data) {
   try {
-    const a = await fetch(route, {
+    const a = await api(route, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
@@ -670,11 +699,77 @@ class Handler(BaseHTTPRequestHandler):
     def route(self):
         return self.path.split("?")[0].strip("/")
 
+    def host_ok(self, hostname):
+        # Browsers send the host lower case, so every side is compared so.
+        hostname = hostname.lower()
+        if hostname == "localhost":
+            return True
+        try:
+            ipaddress.ip_address(hostname)
+            return True
+        except ValueError:
+            pass
+        return hostname in {h.lower() for h in self.server.allow_hosts}
+
+    def refused(self):
+        """Checks Host, Origin and the token, before any route runs.
+
+        DNS rebinding needs a DNS name, a literal address cannot be
+        rebound, so a name has to be allowed on purpose with
+        --allow-host. Origin, when sent, must name the same host as the
+        request itself. Absent Origin is allowed, same origin GETs and
+        command line clients send none, the token still applies.
+        """
+        host_header = self.headers.get("Host")
+        if not host_header:
+            self.respond(403, "text/plain; charset=utf-8",
+                         "forbidden, no Host header, open the page at the "
+                         "address the service printed")
+            return True
+        hostname = host_header
+        if hostname.startswith("["):
+            hostname = hostname.split("]")[0].lstrip("[")
+        else:
+            hostname = hostname.split(":")[0]
+        if not self.host_ok(hostname):
+            self.respond(403, "text/plain; charset=utf-8",
+                         "forbidden, host %r is not allowed, start the service "
+                         "with --allow-host %s" % (hostname, hostname))
+            return True
+
+        origin = self.headers.get("Origin")
+        if origin:
+            origin_host = origin.split("://", 1)[-1]
+            if origin_host.lower() != host_header.lower():
+                self.respond(403, "text/plain; charset=utf-8",
+                             "forbidden, Origin does not match Host, open the "
+                             "page at the address the service printed")
+                return True
+
+        p = self.route()
+        if self.command == "GET" and p in ("", "index.html"):
+            return False
+        # A plain cross site form or fetch cannot set a custom header
+        # without a CORS preflight, which this server never answers with
+        # permission, so this header alone proves the page itself sent it.
+        # Compared as bytes, compare_digest raises on a non ASCII str.
+        given = self.headers.get("X-AbGal-Token", "").encode("utf-8", "replace")
+        if not hmac.compare_digest(given, self.server.token.encode()):
+            # The usual cause is a tab left open across a restart of the
+            # service, which made a new token.
+            self.respond(403, "text/plain; charset=utf-8",
+                         "forbidden, token does not match, reload the page")
+            return True
+        return False
+
     def do_GET(self):
+        if self.refused():
+            return
         p = self.route()
         try:
             if p in ("", "index.html"):
-                return self.respond(200, "text/html; charset=utf-8", PAGE)
+                page = PAGE.replace("__ABGAL_TOKEN__", self.server.token)
+                return self.respond(200, "text/html; charset=utf-8", page)
             if p == "guests":
                 payload = guest_status()
                 return self.respond(200, "application/json", json.dumps({
@@ -697,14 +792,30 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(200, "application/json",
                                     json.dumps({"width": w, "height": h}))
             self.respond(404, "text/plain; charset=utf-8", "unknown")
-        except Exception as e:
-            self.respond(500, "text/plain; charset=utf-8", str(e))
+        except Exception:
+            log.exception("do_GET %s", p)
+            self.respond(500, "text/plain; charset=utf-8",
+                        "internal error, see the service log")
 
     def do_POST(self):
+        if self.refused():
+            return
         p = self.route()
         try:
-            length = int(self.headers.get("Content-Length") or 0)
-            data = json.loads(self.rfile.read(length) or b"{}")
+            media = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+            if media != "application/json":
+                return self.respond(415, "text/plain; charset=utf-8",
+                                    "expected application/json")
+            raw_length = self.headers.get("Content-Length") or "0"
+            if not (raw_length.isascii() and raw_length.isdecimal()):
+                return self.respond(400, "text/plain; charset=utf-8", "bad request")
+            length = int(raw_length)
+            try:
+                data = json.loads(self.rfile.read(length) or b"{}")
+            except ValueError:
+                return self.respond(400, "text/plain; charset=utf-8", "bad request")
+            if not isinstance(data, dict):
+                return self.respond(400, "text/plain; charset=utf-8", "bad request")
 
             if p == "switch":
                 return self.switch_guest(data.get("name"))
@@ -727,7 +838,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self.respond(400, "text/plain; charset=utf-8", "key locked")
                 d.press_key(name)
             elif p == "text":
-                d.type_text(str(data["word"])[:200])
+                try:
+                    d.type_text(str(data["word"])[:200])
+                except ValueError:
+                    return self.respond(400, "text/plain; charset=utf-8",
+                                        "text holds a control character")
             elif p == "swipe":
                 if "direction" in data:
                     mx, my = width // 2, height // 2
@@ -751,8 +866,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(404, "text/plain; charset=utf-8", "unknown")
 
             self.respond(200, "application/json", '{"ok":true}')
-        except Exception as e:
-            self.respond(500, "text/plain; charset=utf-8", str(e))
+        except Exception:
+            log.exception("do_POST %s", p)
+            self.respond(500, "text/plain; charset=utf-8",
+                        "internal error, see the service log")
 
     def switch_guest(self, name):
         """Points the server at a different guest's serial, or refuses.
@@ -763,8 +880,10 @@ class Handler(BaseHTTPRequestHandler):
         """
         try:
             rows = guest_rows()
-        except Exception as e:
-            return self.respond(500, "text/plain; charset=utf-8", str(e))
+        except Exception:
+            log.exception("switch_guest")
+            return self.respond(500, "text/plain; charset=utf-8",
+                                "internal error, see the service log")
         found = next((g for g in rows if g["name"] == name), None)
         if found is None:
             return self.respond(404, "text/plain; charset=utf-8", "no such guest")
@@ -780,14 +899,31 @@ class Handler(BaseHTTPRequestHandler):
 
         If the guest a viewer was watching just stopped or restarted, the
         selection is cleared too, so the page falls back to the
-        placeholder instead of polling a dead serial.
+        placeholder instead of polling a dead serial. Only one lifecycle
+        action per guest runs at a time, a second request for the same
+        guest is refused instead of overlapping the first.
         """
         if action not in ("start", "stop", "restart"):
             return self.respond(400, "text/plain; charset=utf-8", "unknown action")
+        if not isinstance(name, str) or not name:
+            return self.respond(400, "text/plain; charset=utf-8", "bad request")
+        with self.server.busy_lock:
+            if name in self.server.busy:
+                return self.respond(409, "text/plain; charset=utf-8",
+                                    "an action for this guest is already running")
+            self.server.busy.add(name)
         try:
             guest_action(name, action)
-        except Exception as e:
-            return self.respond(500, "text/plain; charset=utf-8", str(e))
+        except GuestActionError as e:
+            # abgal's own reason, written for the person at the page.
+            return self.respond(409, "text/plain; charset=utf-8", str(e))
+        except Exception:
+            log.exception("lifecycle %s %r", action, name)
+            return self.respond(500, "text/plain; charset=utf-8",
+                                "internal error, see the service log")
+        finally:
+            with self.server.busy_lock:
+                self.server.busy.discard(name)
         if action in ("stop", "restart") and self.server.selected == name:
             self.server.device = None
             self.server.selected = None
@@ -797,18 +933,37 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def make_server(address, port, step, token, allow_hosts=()):
+    """Builds the ThreadingHTTPServer with every attribute the handler needs.
+
+    Split out from main so a test can start a server on its own port and
+    talk to it directly, without going through argument parsing or the
+    guest preselection.
+    """
+    service = ThreadingHTTPServer((address, port), Handler)
+    service.step = step
+    service.device = None
+    service.selected = None
+    service.token = token
+    service.allow_hosts = set(allow_hosts)
+    service.busy = set()
+    service.busy_lock = threading.Lock()
+    return service
+
+
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     t = argparse.ArgumentParser(description="View and control for the emulator")
     t.add_argument("--guest", help="a guest to preselect, it must already be running")
     t.add_argument("--address", default="127.0.0.1")
     t.add_argument("--port", type=int, default=8099)
     t.add_argument("--step", type=int, default=2)
+    t.add_argument("--allow-host", action="append", dest="allow_host", default=[],
+                   metavar="NAME", help="an extra Host name to accept, repeatable")
     a = t.parse_args()
 
-    service = ThreadingHTTPServer((a.address, a.port), Handler)
-    service.step = a.step
-    service.device = None
-    service.selected = None
+    token = secrets.token_urlsafe(32)
+    service = make_server(a.address, a.port, a.step, token, a.allow_host)
     if a.guest:
         found = next((g for g in guest_rows() if g["name"] == a.guest), None)
         if found is None or found["adb"] != "device":
@@ -818,6 +973,7 @@ def main():
             service.selected = a.guest
 
     print(f"View listens on http://{a.address}:{a.port}/")
+    print("Requests need the token from the page itself, it is not printed here.")
     try:
         service.serve_forever()
     except KeyboardInterrupt:
