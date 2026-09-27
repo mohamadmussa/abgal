@@ -2182,6 +2182,21 @@ def runner_alive(state):
     return container_status(engine, state.get("container") or state["name"])
 
 
+def runner_status_row(name):
+    """One status row for this runner, and whether it is up.
+
+    Pulled out of cmd_github_runner_status so the polling loop there holds
+    only one loop, not a for inside a while.
+    """
+    state = read_runner_state(name)
+    if state is None:
+        return (name, "-", "down", "-", "-", "-", "state file missing"), False
+    detail, up, uptime = runner_alive(state)
+    row = (name, state["backend"], "up" if up else "down",
+          state.get("version", "-"), uptime, state.get("labels", "-"), detail)
+    return row, up
+
+
 def cmd_github_runner_status(args):
     if args.name:
         if args.name not in runner_names():
@@ -2199,21 +2214,11 @@ def cmd_github_runner_status(args):
     deadline = time.time() + max(args.wait, 0)
     layout = "%-20s %-9s %-6s %-8s %-7s %-14s %s"
     while True:
-        rows = []
-        all_up = True
-        for name in names:
-            state = read_runner_state(name)
-            if state is None:
-                rows.append((name, "-", "down", "-", "-", "-", "state file missing"))
-                all_up = False
-                continue
-            detail, up, uptime = runner_alive(state)
-            rows.append((name, state["backend"], "up" if up else "down",
-                        state.get("version", "-"), uptime, state.get("labels", "-"), detail))
-            all_up = all_up and up
+        results = [runner_status_row(name) for name in names]
+        all_up = all(up for _, up in results)
         if all_up or time.time() >= deadline:
             print(layout % ("NAME", "BACKEND", "STATE", "VERSION", "UPTIME", "LABELS", "DETAIL"))
-            for row in rows:
+            for row, _ in results:
                 print(layout % row)
             return 0 if all_up else 1
         time.sleep(2)
