@@ -170,6 +170,17 @@ def physical_devices(known_serials):
     return rows
 
 
+def safe_physical_devices(known_serials):
+    """physical_devices(), but a failed "adb devices" never takes the
+    guest list down with it, an empty list of physical rows does.
+    """
+    try:
+        return physical_devices(known_serials)
+    except Exception:
+        log.exception("physical_devices")
+        return []
+
+
 class GuestActionError(RuntimeError):
     """abgal refused or did not finish an action, the text is meant for the page."""
 
@@ -807,7 +818,7 @@ class Handler(BaseHTTPRequestHandler):
             if p == "guests":
                 payload = guest_status()
                 known = {g["serial"] for g in payload["guests"] if g["serial"]}
-                rows = payload["guests"] + physical_devices(known)
+                rows = payload["guests"] + safe_physical_devices(known)
                 return self.respond(200, "application/json", json.dumps({
                     "selected": self.server.selected,
                     "guests": rows,
@@ -919,7 +930,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             rows = guest_rows()
             known = {g["serial"] for g in rows if g["serial"]}
-            rows = rows + physical_devices(known)
+            rows = rows + safe_physical_devices(known)
         except Exception:
             log.exception("switch_guest")
             return self.respond(500, "text/plain; charset=utf-8",

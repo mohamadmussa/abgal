@@ -404,6 +404,22 @@ def test_guests_route_merges_physical_devices(server, monkeypatch):
     assert names == ["g1", "physical-fake-serial"]
 
 
+def test_guests_route_survives_a_broken_adb_devices(server, monkeypatch):
+    monkeypatch.setattr(view_service, "guest_status", lambda: {
+        "guests": [{"name": "g1", "id": "abc12345", "template": "t", "pid": 1,
+                    "serial": "emulator-5554", "adb": "device", "stats": None}],
+        "free_mb": 1000,
+    })
+    monkeypatch.setattr(view_service, "physical_devices",
+                        lambda known: (_ for _ in ()).throw(RuntimeError("adb offline")))
+
+    status, body = request(server, "GET", "/guests", host=host_for(server), token=TOKEN)
+
+    assert status == 200
+    names = [g["name"] for g in json.loads(body)["guests"]]
+    assert names == ["g1"]
+
+
 def test_switch_guest_selects_a_physical_device(server, monkeypatch):
     monkeypatch.setattr(view_service, "guest_status", lambda: {"guests": [], "free_mb": 1})
     monkeypatch.setattr(view_service, "physical_devices", lambda known: [
