@@ -19,6 +19,7 @@ docs/troubleshooting.md.
   abgal watch -n <guest>              the temperature watch start runs by itself
   abgal webui                         the browser view, open to the network
   abgal github-runner status          local liveness of the self hosted runners
+  abgal github-runner log -n <name>   the runner's own log
 
 Only the Python standard library is used. There is nothing to install and
 nothing to package: the file is the program.
@@ -1808,6 +1809,51 @@ def cmd_github_runner_status(args):
         time.sleep(2)
 
 
+# The line the GitHub Actions runner itself prints once it has registered and
+# is waiting for work. Confirmed as the real success signal, not a guess.
+RUNNER_READY = "Listening for Jobs"
+
+
+def runner_log_lines(state, lines):
+    """The tail of the runner's own log, host or container."""
+    name = state["name"]
+    if state["backend"] == "host":
+        diag = runner_dir(name) / "_diag"
+        try:
+            newest = max(diag.glob("Runner_*.log"), key=lambda p: p.stat().st_mtime)
+            return newest.read_text(errors="replace").splitlines()[-lines:]
+        except (OSError, ValueError):
+            return []
+    engine = state.get("engine") or container_engine()
+    if not engine:
+        return []
+    try:
+        done = subprocess.run(
+            [engine, "logs", "--tail", str(lines), state.get("container") or name],
+            capture_output=True, text=True, timeout=10)
+    except OSError:
+        return []
+    return (done.stdout + done.stderr).splitlines()
+
+
+def cmd_github_runner_log(args):
+    state = read_runner_state(args.name)
+    if state is None:
+        print("No runner named %s." % args.name)
+        return 1
+    # Enough lines to catch the success message reliably, not just the last
+    # line, which a slow registration can leave on something unrelated.
+    lines = runner_log_lines(state, args.lines)
+    if not lines:
+        print("No log found for %s yet." % args.name)
+        return 1
+    print("\n".join(lines))
+    if any(RUNNER_READY in line for line in lines):
+        print()
+        print("%s is listening for jobs." % args.name)
+    return 0
+
+
 # --------------------------------------------------------------------- entry
 
 
@@ -1825,6 +1871,7 @@ EXAMPLES = """examples:
   abgal webui --address 127.0.0.1 --port 8100
   abgal github-runner status
   abgal github-runner status -n ci-01 --wait 60
+  abgal github-runner log -n ci-01
 """
 
 
@@ -1938,6 +1985,13 @@ def build_parser():
     runner_status.add_argument("--wait", type=int, default=0, metavar="SECONDS",
                                help="repeat the check for this long, useful right after create")
     runner_status.set_defaults(run=cmd_github_runner_status)
+
+    runner_log = runner_subs.add_parser(
+        "log", help="the runner's own log, enough to see a successful connection")
+    runner_log.add_argument("-n", "--name", required=True, metavar="RUNNER")
+    runner_log.add_argument("--lines", type=int, default=200, metavar="N",
+                            help="how many lines from the end of the log")
+    runner_log.set_defaults(run=cmd_github_runner_log)
 
     return parser
 
