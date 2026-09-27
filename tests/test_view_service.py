@@ -288,7 +288,18 @@ def test_each_refusal_says_what_to_do(server, monkeypatch):
 
     _, body = request(server, "GET", "/guests", host=host, token=TOKEN,
                       origin="http://evil.example")
-    assert "Origin" in body
+    assert "address the service printed" in body
+
+    conn = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+    try:
+        conn.putrequest("GET", "/guests", skip_host=True)
+        conn.putheader("X-AbGal-Token", TOKEN)
+        conn.endheaders()
+        resp = conn.getresponse()
+        assert resp.status == 403
+        assert "address the service printed" in resp.read().decode("utf-8")
+    finally:
+        conn.close()
 
 
 def test_host_names_compare_without_case(monkeypatch):

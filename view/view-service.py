@@ -722,7 +722,9 @@ class Handler(BaseHTTPRequestHandler):
         """
         host_header = self.headers.get("Host")
         if not host_header:
-            self.respond(403, "text/plain; charset=utf-8", "forbidden, no Host header")
+            self.respond(403, "text/plain; charset=utf-8",
+                         "forbidden, no Host header, open the page at the "
+                         "address the service printed")
             return True
         hostname = host_header
         if hostname.startswith("["):
@@ -740,7 +742,8 @@ class Handler(BaseHTTPRequestHandler):
             origin_host = origin.split("://", 1)[-1]
             if origin_host != host_header:
                 self.respond(403, "text/plain; charset=utf-8",
-                             "forbidden, Origin does not match Host")
+                             "forbidden, Origin does not match Host, open the "
+                             "page at the address the service printed")
                 return True
 
         p = self.route()
