@@ -1843,11 +1843,13 @@ def fetch_runner_tarball(row, target):
     return 0
 
 
-def runner_registration_token(repo, key):
-    """A registration token for config.sh, and an error when there is none.
+def runner_token(repo, key, endpoint):
+    """A token from one of the runner endpoints, and an error when there is none.
 
     --key gives a personal access token directly. Without it, the token
     comes from gh, using whatever account it is already logged into.
+    endpoint is "registration-token" to add a runner or "remove-token" to
+    deregister one.
     """
     if key:
         return key, None
@@ -1855,7 +1857,7 @@ def runner_registration_token(repo, key):
         return None, "no --key given and gh is not on this machine"
     try:
         done = subprocess.run(
-            ["gh", "api", "-X", "POST", "repos/%s/actions/runners/registration-token" % repo,
+            ["gh", "api", "-X", "POST", "repos/%s/actions/runners/%s" % (repo, endpoint),
              "--jq", ".token"],
             capture_output=True, text=True, timeout=30)
     except OSError as err:
@@ -1864,6 +1866,14 @@ def runner_registration_token(repo, key):
     if done.returncode != 0 or not token:
         return None, (done.stderr or "gh returned no token").strip()
     return token, None
+
+
+def runner_registration_token(repo, key):
+    return runner_token(repo, key, "registration-token")
+
+
+def runner_removal_token(repo, key):
+    return runner_token(repo, key, "remove-token")
 
 
 def run_runner_script(target, script, extra_args, timeout):
@@ -1923,6 +1933,43 @@ def cmd_github_runner_create(args):
     })
     print("%s created and started. Check with: abgal github-runner status -n %s --wait 60"
           % (args.name, args.name))
+    return 0
+
+
+def cmd_github_runner_remove(args):
+    state = read_runner_state(args.name)
+    target = runner_dir(args.name)
+    if state is None and not target.exists():
+        return problem("no runner named %s. This machine manages no such runner." % args.name)
+
+    backend = (state or {}).get("backend") or args.backend or "host"
+    if backend != "host":
+        return problem("the %s backend is not implemented yet, only host." % backend)
+
+    if target.exists():
+        for step in ("stop", "uninstall"):
+            done = run_runner_script(target, "svc.sh", [step], 60)
+            if done.returncode != 0:
+                problem("svc.sh %s failed, continuing:\n%s"
+                        % (step, (done.stdout + done.stderr).strip()))
+
+        repo = args.repo or (state or {}).get("repo")
+        if repo:
+            token, error = runner_removal_token(repo, args.key)
+            if error:
+                problem("could not get a removal token, removing only locally: %s" % error)
+            else:
+                done = run_runner_script(target, "config.sh", ["remove", "--token", token], 60)
+                if done.returncode != 0:
+                    problem("config.sh remove failed, continuing:\n%s"
+                            % (done.stdout + done.stderr).strip())
+        else:
+            problem("no repo known for %s, not deregistering from GitHub." % args.name)
+
+        shutil.rmtree(target, ignore_errors=True)
+
+    runner_state_path(args.name).unlink(missing_ok=True)
+    print("%s removed." % args.name)
     return 0
 
 
@@ -2236,6 +2283,15 @@ def build_parser():
     runner_create.add_argument("--key", metavar="TOKEN",
                                help="a personal access token, instead of one from gh")
     runner_create.set_defaults(run=cmd_github_runner_create)
+
+    runner_remove = runner_subs.add_parser(
+        "remove", help="stop, deregister and delete one runner")
+    runner_remove.add_argument("-n", "--name", required=True, metavar="RUNNER")
+    runner_remove.add_argument("--repo", metavar="OWNER/REPO",
+                               help="overrides the repo remembered in the state file")
+    runner_remove.add_argument("--key", metavar="TOKEN",
+                               help="a personal access token, instead of one from gh")
+    runner_remove.set_defaults(run=cmd_github_runner_remove)
 
     return parser
 
