@@ -297,6 +297,26 @@ def qemu_processes():
         yield int(entry.name), args
 
 
+def watch_processes():
+    """Every running 'abgal watch' process, as pid and its argument list.
+
+    start detaches the watch with start_new_session=True, so it has no
+    parent-child link to anything abgal could wait on. This is the same
+    /proc scan qemu_processes runs, pointed at the watch subcommand instead.
+    """
+    script = str(Path(__file__).resolve())
+    for entry in PROC.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        args = [a.decode(errors="replace") for a in raw.split(b"\0") if a]
+        if script in args and "watch" in args:
+            yield int(entry.name), args
+
+
 def running_pid(name):
     """The pid this guest runs under, or None.
 
@@ -1185,6 +1205,40 @@ def confirm_delete_all(names):
     return answer.strip() == str(a + b)
 
 
+def stop_watches(grace, say=print):
+    """Ends every detached 'abgal watch' process still running.
+
+    A watch left alive after its guest is already gone would otherwise only
+    notice on its next poll, up to ABGAL_TEMP_INTERVAL seconds later. The
+    orderly signal first, the hard one only if that grace runs out, the same
+    escalation stop_one gives a guest.
+    """
+    pending = {pid for pid, _ in watch_processes()}
+    if not pending:
+        return True
+    say("Stopping %d temperature watch(es)." % len(pending))
+
+    for number in (signal.SIGTERM, signal.SIGKILL):
+        for pid in pending:
+            try:
+                os.kill(pid, number)
+            except OSError:
+                pass
+
+        deadline = time.time() + grace
+        while pending and time.time() < deadline:
+            pending = {pid for pid in pending if (PROC / str(pid)).exists()}
+            if pending:
+                time.sleep(1)
+        pending = {pid for pid in pending if (PROC / str(pid)).exists()}
+        if not pending:
+            return True
+
+    say("%d temperature watch(es) still running. Nothing else this program can do."
+        % len(pending))
+    return False
+
+
 def cmd_shutdown(args):
     live = [g for g, _, _ in guests() if running_pid(g) is not None]
     if not live:
@@ -1197,6 +1251,9 @@ def cmd_shutdown(args):
         print("Stopped %d of %d: %s" % (len(stopped), len(live), ", ".join(stopped) or "none"))
         if len(stopped) != len(live):
             fail("not every guest stopped. Nothing else was touched.")
+
+    if not stop_watches(args.grace):
+        fail("a temperature watch did not stop. Nothing else was touched.")
 
     if not args.DELETE:
         print("Every guest and its disk stays in place. A start needs no create.")

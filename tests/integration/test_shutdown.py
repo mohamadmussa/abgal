@@ -126,6 +126,44 @@ def test_delete_with_the_right_answer_removes_every_guest(two_guests, no_signals
     assert "Removed 2 guest(s): pixel, tablet" in out
 
 
+def test_shutdown_stops_a_running_watch(two_guests, fake_proc, monkeypatch, capsys):
+    fake_proc.add_watch(4300, "pixel")
+    monkeypatch.setattr(abgal.os, "kill", lambda pid, number: fake_proc.remove(pid))
+    monkeypatch.setattr(abgal.time, "sleep", lambda seconds: None)
+
+    assert abgal.cmd_shutdown(args()) == 0
+
+    assert "Stopping 1 temperature watch(es)." in capsys.readouterr().out
+
+
+def test_shutdown_escalates_to_sigkill_when_a_watch_ignores_sigterm(
+        two_guests, fake_proc, monkeypatch, capsys):
+    fake_proc.add_watch(4300, "pixel")
+    killed = []
+
+    def fake_kill(pid, number):
+        killed.append((pid, number))
+        if number == abgal.signal.SIGKILL:
+            fake_proc.remove(pid)
+
+    monkeypatch.setattr(abgal.os, "kill", fake_kill)
+    monkeypatch.setattr(abgal.time, "sleep", lambda seconds: None)
+
+    assert abgal.cmd_shutdown(args(grace=0)) == 0
+
+    assert (4300, abgal.signal.SIGTERM) in killed
+    assert (4300, abgal.signal.SIGKILL) in killed
+
+
+def test_shutdown_fails_when_a_watch_never_stops(two_guests, no_signals, fake_proc, capsys):
+    fake_proc.add_watch(4300, "pixel")
+
+    with pytest.raises(SystemExit):
+        abgal.cmd_shutdown(args(grace=0))
+
+    assert "still running" in capsys.readouterr().out
+
+
 def test_delete_with_no_guests_on_disk_asks_nothing(tmp_path, fake_proc, monkeypatch, capsys):
     monkeypatch.setattr(abgal, "AVD", tmp_path / "avd")
 
