@@ -146,8 +146,9 @@ guest swaps and an app takes twice as long to start.
   no image to build and no Docker daemon.
 - **Not a device farm.** `view/view-service.py` shows the guests of one
   machine in a browser and lets you tap, type, start and stop them, see
-  [View and control from a browser](docs/view-service.md). It listens on
-  loopback by default. There are no users, no queue and no second machine.
+  [View and control from a browser](docs/view-service.md). `abgal webui`
+  opens it to the network, and whoever reaches it controls every guest.
+  There are no users, no queue and no second machine.
 - **Not a test runner.** AbGal gets guests ready. Maestro, Espresso, Appium or
   plain `adb` then do the testing.
 - **Not for physical devices.** It creates and runs emulators only.
