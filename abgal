@@ -1507,6 +1507,18 @@ def doctor_checks():
         else:
             checks.append(("ok", row["image"], found, ""))
 
+    runner_rows = [row for row in runner_version_rows() if row["arch"] == runner_arch()]
+    if runner_rows:
+        pinned = runner_rows[-1]["version"]
+        latest = latest_runner_release()
+        if latest is None:
+            checks.append(("ok", "GitHub Actions runner", "%s pinned, could not reach GitHub to compare" % pinned, ""))
+        elif latest == pinned:
+            checks.append(("ok", "GitHub Actions runner", "%s, the newest release" % pinned, ""))
+        else:
+            checks.append(("later", "GitHub Actions runner", "%s pinned, %s is out" % (pinned, latest),
+                           "test it on a branch first, see the comment atop runner-versions.conf"))
+
     free = available_mb()
     sizes = [memory_mb(row["ram"]) for row in templates_found if memory_mb(row["ram"])]
     if free is None:
@@ -1746,6 +1758,23 @@ def runner_version_rows():
         return []
     lines = (line.strip() for line in text.splitlines())
     return [runner_version_row(line) for line in lines if line and not line.startswith("#")]
+
+
+def latest_runner_release():
+    """The newest actions/runner release tag on GitHub, or None without network.
+
+    Used only by doctor, to say when runner-versions.conf is behind what
+    GitHub has, never to pick a version to install; installing still only
+    ever reads runner-versions.conf itself.
+    """
+    try:
+        with urllib.request.urlopen(
+                "https://api.github.com/repos/actions/runner/releases/latest", timeout=5) as resp:
+            data = json.loads(resp.read())
+    except (OSError, ValueError):
+        return None
+    tag = data.get("tag_name", "")
+    return tag[1:] if tag.startswith("v") else (tag or None)
 
 
 def runner_arch():

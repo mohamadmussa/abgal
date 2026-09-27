@@ -73,3 +73,74 @@ def test_pick_runner_version_with_an_unsupported_arch_is_none(home, monkeypatch)
     write_conf(home, "linux-x64 | 2.337.0 | url | sha\n")
 
     assert abgal.pick_runner_version() is None
+
+
+class FakeReleaseResponse:
+    def __init__(self, data):
+        self._data = data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self._data
+
+
+def test_latest_runner_release_strips_the_leading_v(monkeypatch):
+    monkeypatch.setattr(abgal.urllib.request, "urlopen",
+                        lambda url, timeout: FakeReleaseResponse(b'{"tag_name": "v2.338.0"}'))
+
+    assert abgal.latest_runner_release() == "2.338.0"
+
+
+def test_latest_runner_release_without_network_is_none(monkeypatch):
+    def raises(url, timeout):
+        raise OSError("no network")
+    monkeypatch.setattr(abgal.urllib.request, "urlopen", raises)
+
+    assert abgal.latest_runner_release() is None
+
+
+def test_doctor_checks_when_the_pinned_version_is_the_newest(home, monkeypatch):
+    monkeypatch.setattr(abgal.platform, "machine", lambda: "x86_64")
+    write_conf(home, "linux-x64 | 2.337.0 | url | sha\n")
+    monkeypatch.setattr(abgal, "latest_runner_release", lambda: "2.337.0")
+    monkeypatch.setattr(abgal, "version_rows", lambda: [])
+    monkeypatch.setattr(abgal, "template_rows", lambda: [])
+
+    checks = abgal.doctor_checks()
+
+    runner_check = next(c for c in checks if c[1] == "GitHub Actions runner")
+    assert runner_check[0] == "ok"
+    assert "newest release" in runner_check[2]
+
+
+def test_doctor_checks_when_a_newer_version_is_out(home, monkeypatch):
+    monkeypatch.setattr(abgal.platform, "machine", lambda: "x86_64")
+    write_conf(home, "linux-x64 | 2.337.0 | url | sha\n")
+    monkeypatch.setattr(abgal, "latest_runner_release", lambda: "2.338.0")
+    monkeypatch.setattr(abgal, "version_rows", lambda: [])
+    monkeypatch.setattr(abgal, "template_rows", lambda: [])
+
+    checks = abgal.doctor_checks()
+
+    runner_check = next(c for c in checks if c[1] == "GitHub Actions runner")
+    assert runner_check[0] == "later"
+    assert "2.337.0 pinned, 2.338.0 is out" in runner_check[2]
+
+
+def test_doctor_checks_without_network_stays_ok(home, monkeypatch):
+    monkeypatch.setattr(abgal.platform, "machine", lambda: "x86_64")
+    write_conf(home, "linux-x64 | 2.337.0 | url | sha\n")
+    monkeypatch.setattr(abgal, "latest_runner_release", lambda: None)
+    monkeypatch.setattr(abgal, "version_rows", lambda: [])
+    monkeypatch.setattr(abgal, "template_rows", lambda: [])
+
+    checks = abgal.doctor_checks()
+
+    runner_check = next(c for c in checks if c[1] == "GitHub Actions runner")
+    assert runner_check[0] == "ok"
+    assert "could not reach GitHub" in runner_check[2]
