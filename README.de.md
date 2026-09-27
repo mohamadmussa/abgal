@@ -17,7 +17,7 @@ Version, Systemabbild und Speicher. Ein *AVD* ist ein Emulator aus einer
 Vorlage, mit eigenem Namen und eigener Platte. Zehn AVDs aus einer Vorlage
 teilen sich ein Systemabbild.
 
-## Lebenslauf
+## Lebenszyklus
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/lifecycle-dark.svg">
@@ -145,7 +145,7 @@ Start.
 
 ## Was AbGal nicht ist
 
-- **Kein Container.** AVDs laufen als gewöhnliche Prozesse auf dem Wirt. Es
+- **Kein Container.** AVDs laufen als gewöhnliche Prozesse auf dem Host. Es
   gibt kein Abbild zu bauen und keinen Docker Dienst.
 - **Keine Gerätefarm.** `view/view-service.py` zeigt die AVDs eines
   Rechners im Browser, man kann sie antippen, darin tippen, sie starten und
@@ -171,7 +171,7 @@ Start.
 
 | Projekt | Was es tut | Worin AbGal sich unterscheidet |
 |---|---|---|
-| [budtmo/docker-android](https://github.com/budtmo/docker-android) | Ein Emulator je Docker Container, mit Browseransicht über noVNC | Braucht Docker. AbGal fährt mehrere AVDs auf dem Wirt und prüft den Speicher zwischen den Starts |
+| [budtmo/docker-android](https://github.com/budtmo/docker-android) | Ein Emulator je Docker Container, mit Browseransicht über noVNC | Braucht Docker. AbGal fährt mehrere AVDs auf dem Host und prüft den Speicher zwischen den Starts |
 | [google/android-emulator-container-scripts](https://github.com/google/android-emulator-container-scripts) | Skripte, die den Emulator in ein Container Abbild packen | Nur Container. AbGal braucht kein Abbild und keinen Bauschritt |
 | [DeviceFarmer/stf](https://github.com/DeviceFarmer/stf) | Steuert schon verbundene Geräte aus dem Browser | STF startet keinen Emulator. AbGal startet sie und könnte unter STF liegen |
 | Android Studio Device Manager | Legt Emulatoren von Hand an und startet sie | Einer nach dem anderen, in einem Desktopprogramm. AbGal macht es stapelweise aus einer Shell |
