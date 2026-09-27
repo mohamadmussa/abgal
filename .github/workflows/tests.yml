@@ -1,0 +1,35 @@
+# The tests on their own, one line per folder so a failure names its kind.
+# unit and integration need neither adb nor KVM and run on every hosted
+# runner. e2e needs a real guest and gets its own job on a self hosted runner
+# once that exists, until then pytest skips it here.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pytest
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r requirements-dev.txt
+
+      - name: Unit tests
+        run: .venv/bin/pytest -q tests/unit
+
+      - name: Integration tests
+        run: .venv/bin/pytest -q tests/integration
+
+      # Without ABGAL_E2E, so the log lists each e2e and load test as
+      # skipped, with the reason. A collection error still fails here.
+      - name: e2e tests are skipped without ABGAL_E2E
+        run: .venv/bin/pytest -q -rs tests/e2e
