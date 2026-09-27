@@ -128,6 +128,20 @@ Concretely: if you touch `abgal start`, run `abgal start` against a real guest
 and watch it come up. If you touch the temperature watch, lower
 `ABGAL_TEMP_STOP` below the current temperature and watch it stop a guest. Say in the pull request what you ran and what came back.
 
+### Where a test belongs
+
+| Folder | For a test that | Runs |
+|---|---|---|
+| `tests/unit/` | calls one function, with no process, no network and no adb | on every push and pull request |
+| `tests/integration/` | puts several parts together, a real subprocess or a real HTTP server, with the fakes from `tests/fakes/` in place of adb and `/proc` | on every push and pull request |
+| `tests/e2e/` | needs a real guest, KVM and the SDK. A run with several guests over a long time also gets `@pytest.mark.load` | only with `ABGAL_E2E=1` |
+
+`pytest` runs all three and skips `e2e` and `load` unless `ABGAL_E2E=1` is
+set, so it is safe on any machine. `tests/fakes/` holds `FakeAdb` and
+`FakeProc`, and the fixtures `fake_adb` and `fake_proc` in
+`tests/conftest.py` put them in place. A test that needs the real adb or a
+real emulator process belongs in `e2e/`.
+
 ## Everything visible on GitHub is English
 
 Code, comments, file names, variable names, branch names, commit subjects, pull
