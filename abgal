@@ -16,6 +16,7 @@ docs/troubleshooting.md.
   abgal start -n <a> -n <b>           start them one after another
   abgal status                        what is on disk and what is running
   abgal stop -n <guest>               stop that guest
+  abgal shutdown                      stop everything, guests stay on disk
   abgal watch -n <guest>              the temperature watch start runs by itself
   abgal webui                         the browser view, open to the network
 
@@ -1164,6 +1165,70 @@ def cmd_stop(args):
     return 0 if all(results) else 1
 
 
+def confirm_delete_all(names):
+    """A typed arithmetic answer, fresh every call.
+
+    Enter, yes or y answers nothing here on purpose, --DELETE takes down every
+    guest and its disk at once, a single stray keystroke must not be enough.
+    """
+    a, b = secrets.randbelow(41) + 10, secrets.randbelow(41) + 10
+    if not sys.stdin.isatty():
+        fail("nothing to ask on. --DELETE needs a terminal to confirm.")
+    try:
+        answer = input(
+            "--DELETE removes %d guest(s) and their disks for good: %s.\n"
+            "This cannot be undone. What is %d + %d? " % (len(names), ", ".join(names), a, b)
+        )
+    except EOFError:
+        print()
+        answer = ""
+    return answer.strip() == str(a + b)
+
+
+def cmd_shutdown(args):
+    live = [g for g, _, _ in guests() if running_pid(g) is not None]
+    if not live:
+        print("Nothing is running.")
+    else:
+        print("Stopping %d guest(s):" % len(live))
+        serials = running_serials()
+        results = [stop_one(name, serials.get(name), args.grace) for name in live]
+        stopped = [name for name, ok in zip(live, results) if ok]
+        print("Stopped %d of %d: %s" % (len(stopped), len(live), ", ".join(stopped) or "none"))
+        if len(stopped) != len(live):
+            fail("not every guest stopped. Nothing else was touched.")
+
+    if not args.DELETE:
+        print("Every guest and its disk stays in place. A start needs no create.")
+        return 0
+
+    names = [g for g, _, _ in guests()]
+    if not names:
+        print("No guests on disk, nothing for --DELETE to remove.")
+        return 0
+
+    if not confirm_delete_all(names):
+        print("Wrong answer. Nothing was deleted.")
+        return 1
+
+    failed = []
+    for name in names:
+        # Quiet, for the same reason cmd_delete is: avdmanager ends its own
+        # line without a newline, and the summary below says the same thing.
+        if run_tool([AVDMANAGER, "delete", "avd", "-n", name], quiet=True) != 0 \
+                or guest_folder(name).exists():
+            failed.append(name)
+    if failed:
+        fail("%d of %d guests were not removed: %s"
+             % (len(failed), len(names), ", ".join(failed)))
+
+    # The logs stay, for the same reason cmd_delete keeps them: cheap, and the
+    # record of what ran here does not depend on the guest still existing.
+    print("Removed %d guest(s): %s. Their folders under logs/ were left in place."
+          % (len(names), ", ".join(names)))
+    return 0
+
+
 def cmd_status(args):
     rows = guests()
     if args.name:
@@ -1702,6 +1767,7 @@ EXAMPLES = """examples:
   abgal start -n dev-01 --gpu host --locale ar-SA
   abgal status
   abgal stop -n dev-01
+  abgal shutdown
   abgal webui
   abgal webui --address 127.0.0.1 --port 8100
 """
@@ -1781,6 +1847,15 @@ def build_parser():
     stop.add_argument("--grace", type=int, default=GRACE_SECONDS, metavar="SECONDS",
                       help="how long to wait for an orderly shutdown")
     stop.set_defaults(run=cmd_stop, parser=stop)
+
+    shutdown = subs.add_parser(
+        "shutdown", help="stop everything abgal has running, guests stay on disk")
+    shutdown.add_argument("--grace", type=int, default=GRACE_SECONDS, metavar="SECONDS",
+                          help="how long to wait for an orderly shutdown")
+    shutdown.add_argument("--DELETE", action="store_true",
+                          help="after stopping, also delete every guest and its disk."
+                               " Asks for a typed confirmation first")
+    shutdown.set_defaults(run=cmd_shutdown)
 
     status = subs.add_parser("status", help="what is on disk and what is running")
     status.add_argument("-n", "--name", metavar="GUEST",
