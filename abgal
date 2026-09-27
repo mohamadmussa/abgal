@@ -1906,12 +1906,44 @@ def runner_removal_token(repo, key):
 
 
 def run_runner_script(target, script, extra_args, timeout):
-    """One of the runner's own scripts, config.sh or svc.sh, run inside target."""
+    """config.sh, run inside target as whichever user abgal itself runs as.
+
+    The runner refuses to register while running as root, so this must
+    never be the sudo-wrapped call svc.sh gets, see run_svc_script.
+    """
     try:
         return subprocess.run([str(target / script)] + extra_args, cwd=str(target),
                               capture_output=True, text=True, timeout=timeout)
     except OSError as err:
         return SimpleNamespace(returncode=1, stdout="", stderr="%s could not run: %s" % (script, err))
+
+
+def sudo_available():
+    """Whether sudo can run svc.sh without prompting, cached ticket or NOPASSWD.
+
+    Checked once before create touches config.sh at all, so a missing
+    sudo access is never worked around by registering with GitHub and
+    then having to roll that back again when svc.sh turns out to need a
+    password nothing here can supply.
+    """
+    try:
+        return subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=5).returncode == 0
+    except OSError:
+        return False
+
+
+def run_svc_script(target, extra_args, timeout):
+    """svc.sh, the runner's own systemd wrapper, always under sudo.
+
+    Unlike config.sh, svc.sh refuses to run any command, including
+    status, without root, so it is always invoked through sudo here,
+    regardless of the privileges abgal itself was started with.
+    """
+    try:
+        return subprocess.run(["sudo", str(target / "svc.sh")] + extra_args, cwd=str(target),
+                              capture_output=True, text=True, timeout=timeout)
+    except OSError as err:
+        return SimpleNamespace(returncode=1, stdout="", stderr="svc.sh could not run: %s" % err)
 
 
 # A fork building its own image only needs to set ABGAL_RUNNER_IMAGE, not
@@ -1983,7 +2015,7 @@ def create_host_runner(name, target, repo, labels, token):
     if done.returncode != 0:
         return problem("config.sh failed:\n%s" % (done.stdout + done.stderr).strip())
     for step in ("install", "start"):
-        done = run_runner_script(target, "svc.sh", [step], 60)
+        done = run_svc_script(target, [step], 60)
         if done.returncode != 0:
             return problem("svc.sh %s failed:\n%s" % (step, (done.stdout + done.stderr).strip()))
     return 0
@@ -2025,6 +2057,21 @@ def create_container_runner(name, target, repo, labels, token, engine, version):
     return 0
 
 
+def rollback_failed_create(backend, target, repo, key):
+    """Best effort GitHub deregistration before a failed create discards target.
+
+    config.sh, run directly for the host backend, may already have
+    registered the runner even though the later systemd install step
+    failed; left alone, that leaves an offline runner on GitHub with no
+    local state to find it by. The container backend's own entrypoint
+    does that registration inside the container instead, so a failed
+    docker/podman run never reaches config.sh and there is nothing to
+    undo here for it.
+    """
+    if backend == "host":
+        deregister_host_runner(target, repo, key)
+
+
 def cmd_github_runner_create(args):
     conf = find_runner_conf(args.name) or {}
     repo = args.repo or conf.get("repo")
@@ -2063,11 +2110,17 @@ def cmd_github_runner_create(args):
         shutil.rmtree(target, ignore_errors=True)
         return problem("could not get a registration token: %s" % error)
 
+    if backend == "host" and not sudo_available():
+        shutil.rmtree(target, ignore_errors=True)
+        return problem("svc.sh needs root and sudo is not ready. Run 'sudo -v' first, "
+                       "or set up passwordless sudo for svc.sh for unattended use.")
+
     if backend == "host":
         result = create_host_runner(args.name, target, repo, labels, token)
     else:
         result = create_container_runner(args.name, target, repo, labels, token, engine, row["version"])
     if result != 0:
+        rollback_failed_create(backend, target, repo, args.key)
         shutil.rmtree(target, ignore_errors=True)
         return result
 
@@ -2081,13 +2134,8 @@ def cmd_github_runner_create(args):
     return 0
 
 
-def remove_host_runner(target, repo, key):
-    """Stops and uninstalls the systemd service, deregisters best effort."""
-    for step in ("stop", "uninstall"):
-        done = run_runner_script(target, "svc.sh", [step], 60)
-        if done.returncode != 0:
-            problem("svc.sh %s failed, continuing:\n%s"
-                    % (step, (done.stdout + done.stderr).strip()))
+def deregister_host_runner(target, repo, key):
+    """Best effort config.sh remove, before the runner folder is thrown away."""
     if not repo:
         problem("no repo known, not deregistering from GitHub.")
         return
@@ -2098,6 +2146,16 @@ def remove_host_runner(target, repo, key):
     done = run_runner_script(target, "config.sh", ["remove", "--token", token], 60)
     if done.returncode != 0:
         problem("config.sh remove failed, continuing:\n%s" % (done.stdout + done.stderr).strip())
+
+
+def remove_host_runner(target, repo, key):
+    """Stops and uninstalls the systemd service, deregisters best effort."""
+    for step in ("stop", "uninstall"):
+        done = run_svc_script(target, [step], 60)
+        if done.returncode != 0:
+            problem("svc.sh %s failed, continuing:\n%s"
+                    % (step, (done.stdout + done.stderr).strip()))
+    deregister_host_runner(target, repo, key)
 
 
 def deregister_container_runner(engine, container, repo, key):
@@ -2165,17 +2223,24 @@ HOST_UPTIME_RE = re.compile(r"\s*since\s+.+?;\s*(.+?)\s+ago", re.IGNORECASE)
 
 
 def svc_status(name):
-    """The host backend's own svc.sh status: detail, up, uptime.
+    """The host backend's own status, read straight through systemctl.
 
-    svc.sh prints "active" for a running service and "inactive" for a
-    stopped one, so no exit code of its own is needed.
+    svc.sh install writes the exact systemd unit name into .service in
+    the runner folder; reading that file and asking systemctl for it
+    directly needs no root, unlike svc.sh itself, which refuses to run
+    any of its own commands, including status, without root. This is the
+    one status check that therefore never needs sudo at all, so it never
+    depends on a cached ticket or a password prompt.
     """
-    svc = runner_dir(name) / "svc.sh"
+    service_file = runner_dir(name) / ".service"
+    if not service_file.exists():
+        return "not installed", False, "-"
+    unit = service_file.read_text().strip()
     try:
-        done = subprocess.run([str(svc), "status"], capture_output=True,
-                              text=True, timeout=10)
+        done = subprocess.run(["systemctl", "--no-pager", "status", unit],
+                              capture_output=True, text=True, timeout=10)
     except OSError as err:
-        return "svc.sh could not run: %s" % err, False, "-"
+        return "systemctl could not run: %s" % err, False, "-"
     text = (done.stdout + done.stderr).strip()
     up = "active" in text.lower() and "inactive" not in text.lower()
     match = HOST_UPTIME_RE.search(text)

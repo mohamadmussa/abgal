@@ -27,6 +27,12 @@ def args(name=None, wait=0):
     return argparse.Namespace(name=name, wait=wait)
 
 
+def write_service_file(runners, name, unit="actions.runner.myorg-myrepo.ci-01.service"):
+    folder = runners / name
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / ".service").write_text(unit + "\n")
+
+
 def test_status_with_no_runners_reports_that(runners, capsys):
     assert abgal.cmd_github_runner_status(args()) == 0
     assert "This machine manages no runner." in capsys.readouterr().out
@@ -39,6 +45,7 @@ def test_status_with_an_unknown_name_fails(runners, capsys):
 
 def test_status_host_backend_up(runners, monkeypatch, capsys):
     abgal.write_runner_state("ci-01", {"name": "ci-01", "backend": "host", "version": "2.337.0"})
+    write_service_file(runners, "ci-01")
     text = "Active: active (running) since Sat 2026-09-27 08:00:00 UTC; 2h 15min ago\n"
     monkeypatch.setattr(abgal.subprocess, "run", lambda *a, **k: done(stdout=text))
 
@@ -50,8 +57,33 @@ def test_status_host_backend_up(runners, monkeypatch, capsys):
     assert "since" not in out.split("\n")[1]
 
 
+def test_status_host_backend_reads_systemctl_directly_without_sudo(runners, monkeypatch):
+    abgal.write_runner_state("ci-01", {"name": "ci-01", "backend": "host"})
+    write_service_file(runners, "ci-01", unit="actions.runner.myorg-myrepo.ci-01.service")
+
+    calls = []
+    monkeypatch.setattr(abgal.subprocess, "run",
+                        lambda command, **k: calls.append(command) or done(stdout="active\n"))
+
+    assert abgal.cmd_github_runner_status(args(name="ci-01")) == 0
+
+    assert calls == [["systemctl", "--no-pager", "status", "actions.runner.myorg-myrepo.ci-01.service"]]
+
+
+def test_status_host_backend_not_yet_installed(runners, monkeypatch, capsys):
+    abgal.write_runner_state("ci-01", {"name": "ci-01", "backend": "host"})
+
+    monkeypatch.setattr(abgal.subprocess, "run",
+                        lambda *a, **k: pytest.fail("systemctl must not run without a .service file"))
+
+    assert abgal.cmd_github_runner_status(args(name="ci-01")) == 1
+
+    assert "not installed" in capsys.readouterr().out
+
+
 def test_status_host_backend_down(runners, monkeypatch, capsys):
     abgal.write_runner_state("ci-01", {"name": "ci-01", "backend": "host"})
+    write_service_file(runners, "ci-01")
     monkeypatch.setattr(abgal.subprocess, "run", lambda *a, **k: done(stdout="inactive (dead)\n"))
 
     assert abgal.cmd_github_runner_status(args(name="ci-01")) == 1
@@ -87,6 +119,8 @@ def test_status_labels_wider_than_the_fixed_guess_stay_in_their_column(runners, 
 def test_status_without_a_name_lists_every_runner(runners, monkeypatch, capsys):
     abgal.write_runner_state("ci-01", {"name": "ci-01", "backend": "host"})
     abgal.write_runner_state("ci-02", {"name": "ci-02", "backend": "host"})
+    write_service_file(runners, "ci-01")
+    write_service_file(runners, "ci-02")
     monkeypatch.setattr(abgal.subprocess, "run", lambda *a, **k: done(stdout="active\n"))
 
     assert abgal.cmd_github_runner_status(args()) == 0
@@ -99,6 +133,7 @@ def test_status_wait_retries_until_up(runners, monkeypatch, capsys):
     """--wait polls the backend again instead of failing on the first look,
     useful right after create when the process is up but not yet settled."""
     abgal.write_runner_state("ci-01", {"name": "ci-01", "backend": "host"})
+    write_service_file(runners, "ci-01")
     calls = []
 
     def fake_run(command, **kwargs):

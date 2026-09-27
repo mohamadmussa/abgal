@@ -59,7 +59,8 @@ def test_remove_stops_uninstalls_deregisters_and_cleans_up(home, monkeypatch):
 
     assert abgal.cmd_github_runner_remove(args("ci-01")) == 0
 
-    assert [c[-1] for c in calls if c[0].endswith("svc.sh")] == ["stop", "uninstall"]
+    svc_calls = [c for c in calls if c[0] == "sudo" and c[1].endswith("svc.sh")]
+    assert [c[-1] for c in svc_calls] == ["stop", "uninstall"]
     config_call = next(c for c in calls if c[0].endswith("config.sh"))
     assert config_call[1:] == ["remove", "--token", "rm-tok3n"]
     assert "repos/myorg/myrepo/actions/runners/remove-token" in \
@@ -88,7 +89,7 @@ def test_remove_continues_locally_when_svc_sh_fails(home, monkeypatch, capsys):
     monkeypatch.setattr(abgal.shutil, "which", lambda name: "/usr/bin/gh")
     monkeypatch.setattr(abgal.subprocess, "run",
                         lambda command, **k: done(returncode=1, stderr="boom") if
-                        command[0].endswith("svc.sh") else done(stdout="tok\n"))
+                        command[0] == "sudo" and command[1].endswith("svc.sh") else done(stdout="tok\n"))
 
     assert abgal.cmd_github_runner_remove(args("ci-01")) == 0
     assert "svc.sh" in capsys.readouterr().err

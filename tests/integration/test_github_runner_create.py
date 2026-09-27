@@ -119,7 +119,8 @@ def test_create_downloads_registers_and_starts(home, monkeypatch, capsys):
     assert "https://github.com/myorg/myrepo" in config_call
     assert "tok3n" in config_call
     assert "linux,x64" in config_call
-    assert [c[-1] for c in calls if c[0].endswith("svc.sh")] == ["install", "start"]
+    svc_calls = [c for c in calls if c[0] == "sudo" and c[1].endswith("svc.sh")]
+    assert [c[-1] for c in svc_calls] == ["install", "start"]
 
     state = abgal.read_runner_state("ci-01")
     assert state == {"name": "ci-01", "backend": "host", "repo": "myorg/myrepo",
@@ -153,6 +154,58 @@ def test_create_with_key_skips_gh(home, monkeypatch):
 
     config_call = next(c for c in calls if c[0].endswith("config.sh"))
     assert "pat-token" in config_call
+
+
+def test_create_fails_fast_when_sudo_is_not_ready(home, monkeypatch, capsys):
+    raw, sha = runner_tarball()
+    write_runner_versions(home, sha)
+    monkeypatch.setattr(abgal.urllib.request, "urlopen", lambda url, timeout: FakeResponse(raw))
+    monkeypatch.setattr(abgal.shutil, "which", lambda name: "/usr/bin/gh")
+
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[:2] == ["gh", "api"]:
+            return done(stdout="tok3n\n")
+        if command[:2] == ["sudo", "-n"]:
+            return done(returncode=1)
+        return done()
+
+    monkeypatch.setattr(abgal.subprocess, "run", fake_run)
+
+    assert abgal.cmd_github_runner_create(args("ci-01", repo="myorg/myrepo")) == 1
+    assert "sudo" in capsys.readouterr().err
+
+    assert not any(c[0].endswith("config.sh") for c in calls)
+    assert not (home / "runners" / "ci-01").exists()
+
+
+def test_create_deregisters_when_svc_install_fails_after_registering(home, monkeypatch, capsys):
+    raw, sha = runner_tarball()
+    write_runner_versions(home, sha)
+    monkeypatch.setattr(abgal.urllib.request, "urlopen", lambda url, timeout: FakeResponse(raw))
+    monkeypatch.setattr(abgal.shutil, "which", lambda name: "/usr/bin/gh")
+
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[:2] == ["gh", "api"]:
+            return done(stdout="tok3n\n")
+        if command[0] == "sudo" and command[1].endswith("svc.sh") and command[-1] == "install":
+            return done(returncode=1, stderr="a password is required")
+        return done()
+
+    monkeypatch.setattr(abgal.subprocess, "run", fake_run)
+
+    assert abgal.cmd_github_runner_create(args("ci-01", repo="myorg/myrepo")) == 1
+    assert "password" in capsys.readouterr().err
+
+    deregister_call = next(c for c in calls if c[0].endswith("config.sh") and "remove" in c)
+    assert "tok3n" in deregister_call
+    assert not (home / "runners" / "ci-01").exists()
+    assert abgal.read_runner_state("ci-01") is None
 
 
 def test_create_fails_with_a_bad_checksum(home, monkeypatch, capsys):
