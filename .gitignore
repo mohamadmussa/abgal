@@ -4,6 +4,10 @@ sdk/
 # Virtual device images and their runtime state, several gigabytes.
 avd/
 
+# Self hosted GitHub Actions runners this machine manages: the state file
+# abgal writes at create time and the installed runner software itself.
+runners/
+
 # User files of the SDK tools, redirected here from ~/.android. Includes a
 # copy of the private adb key, so this never reaches a commit.
 android-home/
@@ -21,6 +25,10 @@ apk/*
 # not of this project, so it stays on the machine that does the testing.
 app.conf
 
+# The repos this machine's self hosted runners register against. A property
+# of the machine, and it names real GitHub repositories.
+runner.conf
+
 # German working copies. The published language is English, except these
 # committed mirrors of pages that already have an English original on main.
 *.de.md
@@ -31,6 +39,7 @@ app.conf
 !docs/troubleshooting.de.md
 !docs/dashboard-design.de.md
 !docs/view-service.de.md
+!docs/github-runner.de.md
 !README.de.md
 !CONTRIBUTING.de.md
 !apk/README.de.md

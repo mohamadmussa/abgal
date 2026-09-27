@@ -18,12 +18,15 @@ docs/troubleshooting.md.
   abgal stop -n <guest>               stop that guest
   abgal watch -n <guest>              the temperature watch start runs by itself
   abgal webui                         the browser view, open to the network
+  abgal github-runner status          local liveness of the self hosted runners
+  abgal github-runner log -n <name>   the runner's own log
 
 Only the Python standard library is used. There is nothing to install and
 nothing to package: the file is the program.
 """
 
 import argparse
+import datetime
 import grp
 import hashlib
 import json
@@ -37,14 +40,17 @@ import shutil
 import signal
 import subprocess
 import sys
+import tarfile
 import time
 import urllib.request
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 HOME = Path(__file__).resolve().parent
 SDK = HOME / "sdk"
 AVD = HOME / "avd"
+RUNNERS = HOME / "runners"
 LOGS = HOME / "logs"
 ANDROID_USER = HOME / "android-home"
 ADB = SDK / "platform-tools" / "adb"
@@ -1501,6 +1507,18 @@ def doctor_checks():
         else:
             checks.append(("ok", row["image"], found, ""))
 
+    runner_rows = [row for row in runner_version_rows() if row["arch"] == runner_arch()]
+    if runner_rows:
+        pinned = runner_rows[-1]["version"]
+        latest = latest_runner_release()
+        if latest is None:
+            checks.append(("ok", "GitHub Actions runner", "%s pinned, could not reach GitHub to compare" % pinned, ""))
+        elif latest == pinned:
+            checks.append(("ok", "GitHub Actions runner", "%s, the newest release" % pinned, ""))
+        else:
+            checks.append(("later", "GitHub Actions runner", "%s pinned, %s is out" % (pinned, latest),
+                           "test it on a branch first, see the comment atop runner-versions.conf"))
+
     free = available_mb()
     sizes = [memory_mb(row["ram"]) for row in templates_found if memory_mb(row["ram"])]
     if free is None:
@@ -1689,6 +1707,685 @@ def cmd_webui(args):
         return 0
 
 
+# --------------------------------------------------------------- github-runner
+
+
+def runner_state_path(name):
+    return RUNNERS / (name + ".json")
+
+
+def runner_dir(name):
+    return RUNNERS / name
+
+
+def read_runner_state(name):
+    """The state abgal wrote for this runner at create time, or None."""
+    try:
+        return json.loads(runner_state_path(name).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def write_runner_state(name, state):
+    RUNNERS.mkdir(parents=True, exist_ok=True)
+    runner_state_path(name).write_text(json.dumps(state, indent=2) + "\n")
+
+
+def runner_names():
+    """Every runner with a state file on this machine, sorted."""
+    if not RUNNERS.is_dir():
+        return []
+    return sorted(p.stem for p in RUNNERS.glob("*.json"))
+
+
+RUNNER_VERSION_FIELDS = ("arch", "version", "url", "sha256")
+
+RUNNER_ARCH_BY_MACHINE = {"x86_64": "linux-x64", "aarch64": "linux-arm64"}
+
+
+def runner_version_row(line):
+    """One runner-versions.conf line as a dict of its four columns."""
+    fields = [f.strip() for f in line.split("|")]
+    fields += [""] * (len(RUNNER_VERSION_FIELDS) - len(fields))
+    return dict(zip(RUNNER_VERSION_FIELDS, fields))
+
+
+def runner_version_rows():
+    """Every tested runner build from runner-versions.conf, in file order."""
+    try:
+        text = (HOME / "runner-versions.conf").read_text()
+    except OSError:
+        return []
+    lines = (line.strip() for line in text.splitlines())
+    return [runner_version_row(line) for line in lines if line and not line.startswith("#")]
+
+
+def latest_runner_release():
+    """The newest actions/runner release tag on GitHub, or None without network.
+
+    Used only by doctor, to say when runner-versions.conf is behind what
+    GitHub has, never to pick a version to install; installing still only
+    ever reads runner-versions.conf itself.
+    """
+    try:
+        with urllib.request.urlopen(
+                "https://api.github.com/repos/actions/runner/releases/latest", timeout=5) as resp:
+            data = json.loads(resp.read())
+    except (OSError, ValueError):
+        return None
+    tag = data.get("tag_name", "")
+    return tag[1:] if tag.startswith("v") else (tag or None)
+
+
+def runner_arch():
+    """This machine's architecture, in runner-versions.conf's own spelling."""
+    return RUNNER_ARCH_BY_MACHINE.get(platform.machine())
+
+
+def pick_runner_version(version=None):
+    """The tested build to install: the row for this arch and version.
+
+    Without a version, the newest (bottom-most) tested row for this arch,
+    which is the point of only ever appending a line after it was tested.
+    Returns None when the architecture or the requested version is not
+    listed in runner-versions.conf, never a guess.
+    """
+    arch = runner_arch()
+    rows = [row for row in runner_version_rows() if row["arch"] == arch]
+    if version:
+        rows = [row for row in rows if row["version"] == version]
+    return rows[-1] if rows else None
+
+
+RUNNER_CONF_FIELDS = ("name", "repo", "labels", "backend")
+
+
+def runner_conf_row(line):
+    """One runner.conf line as a dict of its four columns."""
+    fields = [f.strip() for f in line.split("|")]
+    fields += [""] * (len(RUNNER_CONF_FIELDS) - len(fields))
+    return dict(zip(RUNNER_CONF_FIELDS, fields))
+
+
+def runner_conf_rows():
+    """Every runner defined in runner.conf, in file order."""
+    try:
+        text = (HOME / "runner.conf").read_text()
+    except OSError:
+        return []
+    lines = (line.strip() for line in text.splitlines())
+    return [runner_conf_row(line) for line in lines if line and not line.startswith("#")]
+
+
+def find_runner_conf(name):
+    """This runner's own line from runner.conf, or None without one."""
+    for row in runner_conf_rows():
+        if row["name"] == name:
+            return row
+    return None
+
+
+def fetch_runner_tarball(row, target):
+    """Downloads the pinned runner build, verifies it and unpacks into target.
+
+    The download sits next to target and only takes effect once the sha256
+    matches, so a bad or interrupted fetch never leaves a runner half
+    installed.
+    """
+    target.mkdir(parents=True, exist_ok=True)
+    download = target.parent / (".abgal-runner-download-%s.tar.gz" % target.name)
+    print("Fetching %s" % row["url"])
+    digest = hashlib.sha256()
+    try:
+        with urllib.request.urlopen(row["url"], timeout=60) as response, \
+                open(download, "wb") as out:
+            total = int(response.headers.get("Content-Length") or 0)
+            done, shown = 0, 0
+            while True:
+                chunk = response.read(1 << 20)
+                if not chunk:
+                    break
+                out.write(chunk)
+                digest.update(chunk)
+                done += len(chunk)
+                if total and done * 10 // total > shown:
+                    shown = done * 10 // total
+                    print("  %3d%%  %d MB" % (shown * 10, done >> 20))
+    except (OSError, ValueError) as error:
+        download.unlink(missing_ok=True)
+        return problem("could not fetch %s:\n       %s" % (row["url"], error))
+    if digest.hexdigest() != row["sha256"]:
+        download.unlink()
+        return problem("the download has sha256 %s, runner-versions.conf expects %s.\n"
+                       "       Nothing was unpacked." % (digest.hexdigest(), row["sha256"]))
+    try:
+        with tarfile.open(download) as archive:
+            if hasattr(tarfile, "data_filter"):
+                archive.extractall(target, filter="data")
+            else:
+                archive.extractall(target)
+    except (OSError, tarfile.TarError) as error:
+        return problem("could not unpack the runner tarball into %s:\n       %s" % (target, error))
+    finally:
+        download.unlink(missing_ok=True)
+    print("Unpacked into %s" % target)
+    return 0
+
+
+def runner_token(repo, key, endpoint):
+    """A token from one of the runner endpoints, and an error when there is none.
+
+    --key gives a personal access token directly. Without it, the token
+    comes from gh, using whatever account it is already logged into.
+    endpoint is "registration-token" to add a runner or "remove-token" to
+    deregister one.
+    """
+    if key:
+        return key, None
+    if not shutil.which("gh"):
+        return None, "no --key given and gh is not on this machine"
+    try:
+        done = subprocess.run(
+            ["gh", "api", "-X", "POST", "repos/%s/actions/runners/%s" % (repo, endpoint),
+             "--jq", ".token"],
+            capture_output=True, text=True, timeout=30)
+    except OSError as err:
+        return None, "gh could not run: %s" % err
+    token = done.stdout.strip()
+    if done.returncode != 0 or not token:
+        return None, (done.stderr or "gh returned no token").strip()
+    return token, None
+
+
+def runner_registration_token(repo, key):
+    return runner_token(repo, key, "registration-token")
+
+
+def runner_removal_token(repo, key):
+    return runner_token(repo, key, "remove-token")
+
+
+def run_runner_script(target, script, extra_args, timeout):
+    """config.sh, run inside target as whichever user abgal itself runs as.
+
+    The runner refuses to register while running as root, so this must
+    never be the sudo-wrapped call svc.sh gets, see run_svc_script.
+    """
+    try:
+        return subprocess.run([str(target / script)] + extra_args, cwd=str(target),
+                              capture_output=True, text=True, timeout=timeout)
+    except OSError as err:
+        return SimpleNamespace(returncode=1, stdout="", stderr="%s could not run: %s" % (script, err))
+
+
+def sudo_available():
+    """Whether sudo can run svc.sh without prompting, cached ticket or NOPASSWD.
+
+    Checked once before create touches config.sh at all, so a missing
+    sudo access is never worked around by registering with GitHub and
+    then having to roll that back again when svc.sh turns out to need a
+    password nothing here can supply.
+    """
+    try:
+        return subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=5).returncode == 0
+    except OSError:
+        return False
+
+
+def run_svc_script(target, extra_args, timeout):
+    """svc.sh, the runner's own systemd wrapper, always under sudo.
+
+    Unlike config.sh, svc.sh refuses to run any command, including
+    status, without root, so it is always invoked through sudo here,
+    regardless of the privileges abgal itself was started with.
+    """
+    try:
+        return subprocess.run(["sudo", str(target / "svc.sh")] + extra_args, cwd=str(target),
+                              capture_output=True, text=True, timeout=timeout)
+    except OSError as err:
+        return SimpleNamespace(returncode=1, stdout="", stderr="svc.sh could not run: %s" % err)
+
+
+# A fork building its own image only needs to set ABGAL_RUNNER_IMAGE, not
+# change this line, same pattern as ABGAL_GPU and ABGAL_LOCALE below.
+CONTAINER_RUNNER_IMAGE_BASE = os.environ.get("ABGAL_RUNNER_IMAGE", "ghcr.io/mohamadmussa/abgal-runner")
+
+
+def container_runner_image(version):
+    """The image tag for this runner version, adopted straight from
+    runner-versions.conf instead of a version the image would track on its
+    own; the image is pushed under this tag alongside :latest."""
+    return "%s:%s" % (CONTAINER_RUNNER_IMAGE_BASE, version)
+
+
+def running_in_container():
+    """Whether abgal itself is running inside a container.
+
+    Both docker and podman leave a marker file at one of these paths.
+    /dev/kvm passthrough does not nest, so a runner container is refused
+    from inside one.
+    """
+    return Path("/.dockerenv").exists() or Path("/run/.containerenv").exists()
+
+
+def run_engine_command(engine, extra_args, timeout):
+    """One docker/podman call, uniform even when the engine binary is missing."""
+    try:
+        return subprocess.run([engine] + extra_args, capture_output=True, text=True, timeout=timeout)
+    except OSError as err:
+        return SimpleNamespace(returncode=1, stdout="", stderr="%s could not run: %s" % (engine, err))
+
+
+def kvm_group_args():
+    """--group-add for the host's kvm group, so the container user can open /dev/kvm."""
+    try:
+        return ["--group-add", str(grp.getgrnam("kvm").gr_gid)]
+    except KeyError:
+        return []
+
+
+def ensure_runner_image(engine, version):
+    """The container runner image for this runner version, pulled from GHCR,
+    built from docker/runner as a fallback.
+
+    Pulling first means a normal create never builds anything; the local
+    build only runs when there is no network access to GHCR yet, using
+    the Dockerfile this repo carries for exactly that.
+    """
+    image = container_runner_image(version)
+    pulled = run_engine_command(engine, ["pull", image], 300)
+    if pulled.returncode == 0:
+        return image, None
+    dockerfile_dir = HOME / "docker" / "runner"
+    if not (dockerfile_dir / "Dockerfile").exists():
+        return None, ("could not pull %s and there is no local %s to build from:\n%s"
+                      % (image, dockerfile_dir, pulled.stderr.strip()))
+    built = run_engine_command(engine, ["build", "-t", image, str(dockerfile_dir)], 600)
+    if built.returncode != 0:
+        return None, "building %s failed:\n%s" % (image, (built.stdout + built.stderr).strip())
+    return image, None
+
+
+def create_host_runner(name, target, repo, labels, token):
+    """Registers and starts a runner as a systemd service on this host."""
+    done = run_runner_script(target, "config.sh",
+                             ["--url", "https://github.com/%s" % repo, "--token", token,
+                              "--name", name, "--labels", labels, "--unattended", "--replace"],
+                             120)
+    if done.returncode != 0:
+        return problem("config.sh failed:\n%s" % (done.stdout + done.stderr).strip())
+    for step in ("install", "start"):
+        done = run_svc_script(target, [step], 60)
+        if done.returncode != 0:
+            return problem("svc.sh %s failed:\n%s" % (step, (done.stdout + done.stderr).strip()))
+    return 0
+
+
+def create_container_runner(name, target, repo, labels, token, engine, version):
+    """Registers and starts a runner as a container, /dev/kvm passed through.
+
+    The tarball fetched onto the host lands in target and is bind mounted
+    into the container at /runner; the image's own entrypoint runs
+    config.sh and then run.sh against it, so the version stays whatever
+    runner-versions.conf pinned rather than whatever the image shipped. The
+    image itself is pulled or built under that same version's own tag.
+
+    Runs as the calling user's own uid, not root: the runner refuses to
+    register as root, and root would also leave files in target that this
+    same call cannot clean up again once the container is gone.
+    """
+    if os.getuid() == 0:
+        print("Note: abgal itself is running as root, so the runner container will too, "
+              "and the runner refuses to register while running as root.")
+    image, error = ensure_runner_image(engine, version)
+    if error:
+        return problem(error)
+    done = run_engine_command(
+        engine,
+        ["run", "-d", "--name", name, "--restart", "unless-stopped", "--device", "/dev/kvm",
+         "--user", "%d:%d" % (os.getuid(), os.getgid())]
+        + kvm_group_args() +
+        ["-v", "%s:/runner" % target,
+         "-e", "RUNNER_URL=https://github.com/%s" % repo,
+         "-e", "RUNNER_TOKEN=%s" % token,
+         "-e", "RUNNER_NAME=%s" % name,
+         "-e", "RUNNER_LABELS=%s" % labels,
+         image],
+        60)
+    if done.returncode != 0:
+        return problem("%s run failed:\n%s" % (engine, (done.stdout + done.stderr).strip()))
+    return 0
+
+
+def rollback_failed_create(backend, target, repo, key):
+    """Best effort GitHub deregistration before a failed create discards target.
+
+    config.sh, run directly for the host backend, may already have
+    registered the runner even though the later systemd install step
+    failed; left alone, that leaves an offline runner on GitHub with no
+    local state to find it by. The container backend's own entrypoint
+    does that registration inside the container instead, so a failed
+    docker/podman run never reaches config.sh and there is nothing to
+    undo here for it.
+    """
+    if backend == "host":
+        deregister_host_runner(target, repo, key)
+
+
+def cmd_github_runner_create(args):
+    conf = find_runner_conf(args.name) or {}
+    repo = args.repo or conf.get("repo")
+    labels = args.labels or conf.get("labels", "")
+    backend = args.backend or conf.get("backend") or "host"
+    if not repo:
+        return problem("no repo for %s. Add it to runner.conf or pass --repo owner/repo." % args.name)
+    if backend not in ("host", "container"):
+        return problem("unknown backend %s, host or container." % backend)
+
+    engine = None
+    if backend == "container":
+        if running_in_container():
+            return problem("abgal itself is already running inside a container, "
+                           "nested containers are not supported.")
+        engine = container_engine()
+        if not engine:
+            return problem("neither docker nor podman is on this machine.")
+
+    row = pick_runner_version(args.version)
+    if row is None:
+        return problem(
+            "no tested runner build for this machine's architecture%s in runner-versions.conf."
+            % (" and version %s" % args.version if args.version else ""))
+
+    target = runner_dir(args.name)
+    if target.exists():
+        return problem("%s already exists. Remove it with abgal github-runner remove first." % target)
+
+    if fetch_runner_tarball(row, target) != 0:
+        shutil.rmtree(target, ignore_errors=True)
+        return 1
+
+    token, error = runner_registration_token(repo, args.key)
+    if error:
+        shutil.rmtree(target, ignore_errors=True)
+        return problem("could not get a registration token: %s" % error)
+
+    if backend == "host" and not sudo_available():
+        shutil.rmtree(target, ignore_errors=True)
+        return problem("svc.sh needs root and sudo is not ready. Run 'sudo -v' first, "
+                       "or set up passwordless sudo for svc.sh for unattended use.")
+
+    if backend == "host":
+        result = create_host_runner(args.name, target, repo, labels, token)
+    else:
+        result = create_container_runner(args.name, target, repo, labels, token, engine, row["version"])
+    if result != 0:
+        rollback_failed_create(backend, target, repo, args.key)
+        shutil.rmtree(target, ignore_errors=True)
+        return result
+
+    state = {"name": args.name, "backend": backend, "repo": repo,
+             "labels": labels, "version": row["version"]}
+    if backend == "container":
+        state.update(engine=engine, container=args.name)
+    write_runner_state(args.name, state)
+    print("%s created and started. Check with: abgal github-runner status -n %s --wait 60"
+          % (args.name, args.name))
+    return 0
+
+
+def deregister_host_runner(target, repo, key):
+    """Best effort config.sh remove, before the runner folder is thrown away."""
+    if not repo:
+        problem("no repo known, not deregistering from GitHub.")
+        return
+    token, error = runner_removal_token(repo, key)
+    if error:
+        problem("could not get a removal token, removing only locally: %s" % error)
+        return
+    done = run_runner_script(target, "config.sh", ["remove", "--token", token], 60)
+    if done.returncode != 0:
+        problem("config.sh remove failed, continuing:\n%s" % (done.stdout + done.stderr).strip())
+
+
+def remove_host_runner(target, repo, key):
+    """Stops and uninstalls the systemd service, deregisters best effort."""
+    for step in ("stop", "uninstall"):
+        done = run_svc_script(target, [step], 60)
+        if done.returncode != 0:
+            problem("svc.sh %s failed, continuing:\n%s"
+                    % (step, (done.stdout + done.stderr).strip()))
+    deregister_host_runner(target, repo, key)
+
+
+def deregister_container_runner(engine, container, repo, key):
+    """Best effort config.sh remove inside the container, before it is torn down."""
+    if not repo:
+        problem("no repo known, not deregistering from GitHub.")
+        return
+    token, error = runner_removal_token(repo, key)
+    if error:
+        problem("could not get a removal token, removing only locally: %s" % error)
+        return
+    done = run_engine_command(
+        engine, ["exec", container, "/runner/config.sh", "remove", "--token", token], 60)
+    if done.returncode != 0:
+        problem("config.sh remove inside the container failed, continuing:\n%s"
+                % (done.stdout + done.stderr).strip())
+
+
+def remove_container_runner(state, name, target, repo, key):
+    """Deregisters best effort, then stops and removes the container."""
+    engine = state.get("engine") or container_engine()
+    if not engine:
+        problem("neither docker nor podman is on this machine, removing only locally.")
+        return
+    container = state.get("container") or name
+    deregister_container_runner(engine, container, repo, key)
+    done = run_engine_command(engine, ["rm", "-f", container], 30)
+    if done.returncode != 0:
+        problem("%s rm failed, continuing:\n%s" % (engine, (done.stdout + done.stderr).strip()))
+
+
+def remove_runner_backend(backend, state, name, target, repo, key):
+    """The backend's own best effort removal, only when the runner folder exists."""
+    if not target.exists():
+        return
+    if backend == "host":
+        remove_host_runner(target, repo, key)
+    else:
+        remove_container_runner(state, name, target, repo, key)
+    shutil.rmtree(target, ignore_errors=True)
+
+
+def cmd_github_runner_remove(args):
+    state = read_runner_state(args.name)
+    target = runner_dir(args.name)
+    if state is None and not target.exists():
+        return problem("no runner named %s. This machine manages no such runner." % args.name)
+
+    backend = (state or {}).get("backend") or args.backend or "host"
+    if backend not in ("host", "container"):
+        return problem("unknown backend %s, host or container." % backend)
+
+    repo = args.repo or (state or {}).get("repo")
+    remove_runner_backend(backend, state or {}, args.name, target, repo, args.key)
+
+    runner_state_path(args.name).unlink(missing_ok=True)
+    print("%s removed." % args.name)
+    return 0
+
+
+# systemctl's own "Active: active (running) since <date>; 2h 15min ago" line,
+# folded into svc.sh status. Pulled out so DETAIL does not repeat UPTIME, and
+# left as "-" when the text does not have this shape.
+HOST_UPTIME_RE = re.compile(r"\s*since\s+.+?;\s*(.+?)\s+ago", re.IGNORECASE)
+
+
+def svc_status(name):
+    """The host backend's own status, read straight through systemctl.
+
+    svc.sh install writes the exact systemd unit name into .service in
+    the runner folder; reading that file and asking systemctl for it
+    directly needs no root, unlike svc.sh itself, which refuses to run
+    any of its own commands, including status, without root. This is the
+    one status check that therefore never needs sudo at all, so it never
+    depends on a cached ticket or a password prompt.
+    """
+    service_file = runner_dir(name) / ".service"
+    if not service_file.exists():
+        return "not installed", False, "-"
+    unit = service_file.read_text().strip()
+    try:
+        done = subprocess.run(["systemctl", "--no-pager", "status", unit],
+                              capture_output=True, text=True, timeout=10)
+    except OSError as err:
+        return "systemctl could not run: %s" % err, False, "-"
+    text = (done.stdout + done.stderr).strip()
+    up = "active" in text.lower() and "inactive" not in text.lower()
+    match = HOST_UPTIME_RE.search(text)
+    if match:
+        uptime = match.group(1).strip()
+        text = (text[:match.start()] + text[match.end():]).strip()
+    else:
+        uptime = "-"
+    return text or "no output", up, uptime
+
+
+def container_engine():
+    """docker or podman, whichever this machine has. docker first."""
+    for engine in ("docker", "podman"):
+        if shutil.which(engine):
+            return engine
+    return None
+
+
+def container_status(engine, container):
+    """The container's own state and start time, read through inspect."""
+    try:
+        done = subprocess.run(
+            [engine, "inspect", "--format", "{{.State.Status}}|{{.State.StartedAt}}", container],
+            capture_output=True, text=True, timeout=10)
+    except OSError as err:
+        return "%s could not run: %s" % (engine, err), False, "-"
+    if done.returncode != 0:
+        return (done.stderr or "not found").strip(), False, "-"
+    state, _, started = done.stdout.strip().partition("|")
+    up = state == "running"
+    uptime = "-"
+    if up and started:
+        try:
+            since = datetime.datetime.strptime(started[:19], "%Y-%m-%dT%H:%M:%S")
+            uptime = format_uptime(int((datetime.datetime.utcnow() - since).total_seconds()))
+        except ValueError:
+            pass
+    return state, up, uptime
+
+
+def runner_alive(state):
+    """Whether the backend reports this runner as up, a detail line and uptime.
+
+    Reads the backend directly, svc.sh on the host or the container's own
+    state through Docker or Podman. No GitHub query is involved.
+    """
+    if state["backend"] == "host":
+        return svc_status(state["name"])
+    engine = state.get("engine") or container_engine()
+    if not engine:
+        return "neither docker nor podman is on this machine", False, "-"
+    return container_status(engine, state.get("container") or state["name"])
+
+
+def runner_status_row(name):
+    """One status row for this runner, and whether it is up.
+
+    Pulled out of cmd_github_runner_status so the polling loop there holds
+    only one loop, not a for inside a while.
+    """
+    state = read_runner_state(name)
+    if state is None:
+        return (name, "-", "down", "-", "-", "-", "state file missing"), False
+    detail, up, uptime = runner_alive(state)
+    row = (name, state["backend"], "up" if up else "down",
+          state.get("version", "-"), uptime, state.get("labels", "-"), detail)
+    return row, up
+
+
+def cmd_github_runner_status(args):
+    if args.name:
+        if args.name not in runner_names():
+            print("No runner named %s. This machine manages no such runner." % args.name)
+            return 1
+        names = [args.name]
+    else:
+        names = runner_names()
+        if not names:
+            print("This machine manages no runner.")
+            return 0
+
+    # A repeated check over a short span, useful right after create, when the
+    # process or container is up but the log has not shown success yet.
+    deadline = time.time() + max(args.wait, 0)
+    layout = "%-20s %-9s %-6s %-8s %-7s %-*s %s"
+    while True:
+        results = [runner_status_row(name) for name in names]
+        all_up = all(up for _, up in results)
+        if all_up or time.time() >= deadline:
+            # Labels are free text with no length limit of their own, so the
+            # column is sized to the widest one actually shown, not a guess.
+            width = max([len("LABELS")] + [len(row[5]) for row, _ in results])
+            print(layout % ("NAME", "BACKEND", "STATE", "VERSION", "UPTIME", width, "LABELS", "DETAIL"))
+            for row, _ in results:
+                print(layout % (row[:5] + (width, row[5], row[6])))
+            return 0 if all_up else 1
+        time.sleep(2)
+
+
+# The line the GitHub Actions runner itself prints once it has registered and
+# is waiting for work. Confirmed as the real success signal, not a guess.
+RUNNER_READY = "Listening for Jobs"
+
+
+def runner_log_lines(state, lines):
+    """The tail of the runner's own log, host or container."""
+    name = state["name"]
+    if state["backend"] == "host":
+        diag = runner_dir(name) / "_diag"
+        try:
+            newest = max(diag.glob("Runner_*.log"), key=lambda p: p.stat().st_mtime)
+            return newest.read_text(errors="replace").splitlines()[-lines:]
+        except (OSError, ValueError):
+            return []
+    engine = state.get("engine") or container_engine()
+    if not engine:
+        return []
+    try:
+        done = subprocess.run(
+            [engine, "logs", "--tail", str(lines), state.get("container") or name],
+            capture_output=True, text=True, timeout=10)
+    except OSError:
+        return []
+    return (done.stdout + done.stderr).splitlines()
+
+
+def cmd_github_runner_log(args):
+    state = read_runner_state(args.name)
+    if state is None:
+        print("No runner named %s." % args.name)
+        return 1
+    # Enough lines to catch the success message reliably, not just the last
+    # line, which a slow registration can leave on something unrelated.
+    lines = runner_log_lines(state, args.lines)
+    if not lines:
+        print("No log found for %s yet." % args.name)
+        return 1
+    print("\n".join(lines))
+    if any(RUNNER_READY in line for line in lines):
+        print()
+        print("%s is listening for jobs." % args.name)
+    return 0
+
+
 # --------------------------------------------------------------------- entry
 
 
@@ -1704,6 +2401,9 @@ EXAMPLES = """examples:
   abgal stop -n dev-01
   abgal webui
   abgal webui --address 127.0.0.1 --port 8100
+  abgal github-runner status
+  abgal github-runner status -n ci-01 --wait 60
+  abgal github-runner log -n ci-01
 """
 
 
@@ -1805,6 +2505,54 @@ def build_parser():
                        help="a host name the page may be opened under. Repeatable")
     webui.set_defaults(run=cmd_webui)
 
+    runner = subs.add_parser(
+        "github-runner", help="self hosted GitHub Actions runners, host or container")
+    runner.set_defaults(run=lambda a: runner.print_help() or 0)
+    runner_subs = runner.add_subparsers(dest="runner_command")
+
+    runner_status = runner_subs.add_parser(
+        "status", help="local liveness of one runner or every runner")
+    runner_status.add_argument("-n", "--name", metavar="RUNNER",
+                               help="only this runner. Without it, every runner")
+    runner_status.add_argument("--wait", type=int, default=0, metavar="SECONDS",
+                               help="repeat the check for this long, useful right after create")
+    runner_status.set_defaults(run=cmd_github_runner_status)
+
+    runner_log = runner_subs.add_parser(
+        "log", help="the runner's own log, enough to see a successful connection")
+    runner_log.add_argument("-n", "--name", required=True, metavar="RUNNER")
+    runner_log.add_argument("--lines", type=int, default=200, metavar="N",
+                            help="how many lines from the end of the log")
+    runner_log.set_defaults(run=cmd_github_runner_log)
+
+    runner_create = runner_subs.add_parser(
+        "create", help="register and start a runner from runner.conf")
+    runner_create.add_argument("-n", "--name", required=True, metavar="RUNNER",
+                               help="the runner's name, also its entry in runner.conf")
+    runner_create.add_argument("--repo", metavar="OWNER/REPO",
+                               help="overrides the repo column of runner.conf")
+    runner_create.add_argument("--labels", metavar="LIST",
+                               help="overrides the labels column of runner.conf")
+    runner_create.add_argument("--backend", choices=["host", "container"],
+                               help="overrides the backend column of runner.conf")
+    runner_create.add_argument("--version", metavar="VERSION",
+                               help="a tested version from runner-versions.conf."
+                                    " Without it, the newest tested for this machine")
+    runner_create.add_argument("--key", metavar="TOKEN",
+                               help="a personal access token, instead of one from gh")
+    runner_create.set_defaults(run=cmd_github_runner_create)
+
+    runner_remove = runner_subs.add_parser(
+        "remove", help="stop, deregister and delete one runner")
+    runner_remove.add_argument("-n", "--name", required=True, metavar="RUNNER")
+    runner_remove.add_argument("--repo", metavar="OWNER/REPO",
+                               help="overrides the repo remembered in the state file")
+    runner_remove.add_argument("--backend", choices=["host", "container"],
+                               help="used only without a state file, when name alone cannot tell")
+    runner_remove.add_argument("--key", metavar="TOKEN",
+                               help="a personal access token, instead of one from gh")
+    runner_remove.set_defaults(run=cmd_github_runner_remove)
+
     return parser
 
 
@@ -1823,7 +2571,7 @@ def main():
     # runs first. Everything else talks to the SDK, and a missing SDK there is
     # worth saying plainly instead of letting adb fail with a path nobody
     # recognises.
-    if args.command not in ("list", "setup", "doctor") and (
+    if args.command not in ("list", "setup", "doctor", "github-runner") and (
             not ADB.is_file() or not EMULATOR.is_file()):
         fail("the Android SDK is not under %s.\n"
              "       Both platform-tools/adb and emulator/emulator have to be there.\n"
