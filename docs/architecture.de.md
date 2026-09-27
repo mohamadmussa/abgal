@@ -1,13 +1,15 @@
 # Architektur
 
-[README.md](../README.md) bringt ein Android Virtual Device (AVD) in vier
+*[In English](architecture.md)*
+
+[README.de.md](../README.de.md) bringt ein Android Virtual Device (AVD) in vier
 Befehlen von einem frischen Klon zu einem laufenden Emulator. [Wie es
-funktioniert](how-it-works.md) verfolgt ein AVD durch die Datei oder
+funktioniert](how-it-works.de.md) verfolgt ein AVD durch die Datei oder
 Funktion, die jeden Schritt ausführt.
 Keines von beiden zeigt die ganze Form auf einmal: welche Teile auf welche
 warten, in welcher Reihenfolge, und wie ein Warten neben einem Schritt
 aussieht, der einfach nur läuft. Diese Seite zeigt genau das, mit denselben
-erzeugten Diagrammen, die [CONTRIBUTING.md](../CONTRIBUTING.md) überall dort
+erzeugten Diagrammen, die [CONTRIBUTING.de.md](../CONTRIBUTING.de.md) überall dort
 verlangt, wo ein Ablauf von Warten, Abfragen oder mehr als einem Akteur
 gleichzeitig abhängt.
 
@@ -40,7 +42,7 @@ von einer Zeile in `devices.conf` über
 `create`, `start`, laufend, und wieder zurück zu gestoppt, entweder durch
 `abgal stop` oder durch die Temperaturüberwachung bei 96 C. README.md
 zeichnet das schon als animiertes Zustandsdiagramm, siehe
-[Lebenszyklus](../README.md#lifecycle), deshalb wird es hier nicht wiederholt.
+[Lebenszyklus](../README.de.md#lebenszyklus), deshalb wird es hier nicht wiederholt.
 `docs/README.md` verweist auf dasselbe Bild, statt eine eigene Kopie zu
 pflegen, damit es nur noch ein Diagramm gibt, das mit den echten Zuständen
 Schritt halten muss.
@@ -55,7 +57,7 @@ Schritt halten muss.
 `abgal create` durchläuft neun Schritte für jedes AVD und endet damit, dass
 `create` `config.ini` zurückliest und dreizehn Werte gegen das prüft, was es
 von `avdmanager` verlangt hatte, weil `avdmanager` mehrere davon ohne eine
-Meldung verwirft oder überschreibt. Siehe [Templates](templates.md), welche
+Meldung verwirft oder überschreibt. Siehe [Vorlagen](templates.de.md), welche
 die dreizehn Werte sind und wie eine eigene Vorlage hinzugefügt wird. Das
 Diagramm ist statisch, nicht animiert, weil `create_one()` an keiner Stelle
 ein gemessenes Warten enthält: jeder Schritt ist eine Prüfung, ein
@@ -121,7 +123,7 @@ ausgibt.
 benutzt. Ohne `--port` ist die Wahl ganz allein die eigene Logik der
 Emulator Binärdatei, sie sucht aufwärts ab 5554 nach einem freien Paar und
 nimmt es, und `abgal` gibt für diesen Fall nur "vom Emulator gewählt" aus,
-siehe [Ports](how-it-works.md#ports). Ein ausdrücklicher `--port` muss
+siehe [Ports](how-it-works.de.md#ports). Ein ausdrücklicher `--port` muss
 gerade sein, von 5554 bis 5584, sechzehn Werte insgesamt, `abgal`s eigener
 Kommentar zur Zählung nennt denselben Bereich "die sechzehn Ports, die adb
 anbietet", weil aus genau diesem Bereich die adb Seriennummer eines AVD,
@@ -166,7 +168,7 @@ weiter, das das Programm tun kann.
 </picture>
 
 Das ist die ausführlichere, animierte Fassung des Flowcharts, das schon in
-[Temperaturüberwachung](how-it-works.md#temperature-watch) steht, kein
+[Temperaturüberwachung](how-it-works.de.md#temperaturwache) steht, kein
 Widerspruch dazu: dieselbe Warnung bei 88 C und derselbe Abbruch bei 96 C,
 hier zusammen mit dem Aufwärm-Warten und dem eigenen fehlenden Limit der
 Hauptabfrage gezeichnet. Das Diagramm zeigt vier unterschiedliche Enden.
@@ -189,13 +191,13 @@ seiner eigenen Fläche etwas anderes sagt. `abgal` ist die eine Python Datei
 hinter jedem einzelnen von ihnen; `devices.conf`, `devices.xml` und
 `versions.conf` sind die Dateien, die das Diagramm der ganzen Form oben
 nennt; ein neuer Bildschirm oder eine neue Vorlage gehört in
-[Templates](templates.md), was diese Seite nicht wiederholt. Die Diagramme
+[Vorlagen](templates.de.md), was diese Seite nicht wiederholt. Die Diagramme
 selbst werden von `tools/gen-architecture-diagrams.py` erzeugt, nicht von
 Hand gezeichnet, sodass eine Änderung an `abgal`, die einen dieser Abläufe
 ändert, bedeutet, dieses Skript zu aktualisieren und die SVGs unter
 `docs/img/` neu zu erzeugen, nicht ein Bild direkt zu bearbeiten. Die
 Hausregeln für Branches, Commits und den Datenschutz Gate stehen in
-[CONTRIBUTING.md](../CONTRIBUTING.md), was diese Seite ebenfalls nicht
+[CONTRIBUTING.de.md](../CONTRIBUTING.de.md), was diese Seite ebenfalls nicht
 wiederholt.
 
 ## Für die Entscheidung, es einzusetzen
