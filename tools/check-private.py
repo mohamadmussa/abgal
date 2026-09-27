@@ -52,6 +52,7 @@ UMLAUT_EXEMPT_PATHS = {
     "docs/view-service.de.md",
     "README.de.md",
     "CONTRIBUTING.de.md",
+    "apk/README.de.md",
 }
 
 # Structural patterns. These describe a shape, not a value, so the list is
