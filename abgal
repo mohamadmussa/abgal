@@ -1885,6 +1885,97 @@ def run_runner_script(target, script, extra_args, timeout):
         return SimpleNamespace(returncode=1, stdout="", stderr="%s could not run: %s" % (script, err))
 
 
+CONTAINER_RUNNER_IMAGE = "ghcr.io/mohamadmussa/abgal-runner:latest"
+
+
+def running_in_container():
+    """Whether abgal itself is running inside a container.
+
+    Both docker and podman leave a marker file at one of these paths.
+    /dev/kvm passthrough does not nest, so a runner container is refused
+    from inside one.
+    """
+    return Path("/.dockerenv").exists() or Path("/run/.containerenv").exists()
+
+
+def run_engine_command(engine, extra_args, timeout):
+    """One docker/podman call, uniform even when the engine binary is missing."""
+    try:
+        return subprocess.run([engine] + extra_args, capture_output=True, text=True, timeout=timeout)
+    except OSError as err:
+        return SimpleNamespace(returncode=1, stdout="", stderr="%s could not run: %s" % (engine, err))
+
+
+def kvm_group_args():
+    """--group-add for the host's kvm group, so the container user can open /dev/kvm."""
+    try:
+        return ["--group-add", str(grp.getgrnam("kvm").gr_gid)]
+    except KeyError:
+        return []
+
+
+def ensure_runner_image(engine):
+    """The container runner image: pulled from GHCR, built from docker/runner as a fallback.
+
+    Pulling first means a normal create never builds anything; the local
+    build only runs when there is no network access to GHCR yet, using
+    the Dockerfile this repo carries for exactly that.
+    """
+    pulled = run_engine_command(engine, ["pull", CONTAINER_RUNNER_IMAGE], 300)
+    if pulled.returncode == 0:
+        return CONTAINER_RUNNER_IMAGE, None
+    dockerfile_dir = HOME / "docker" / "runner"
+    if not (dockerfile_dir / "Dockerfile").exists():
+        return None, ("could not pull %s and there is no local %s to build from:\n%s"
+                      % (CONTAINER_RUNNER_IMAGE, dockerfile_dir, pulled.stderr.strip()))
+    built = run_engine_command(engine, ["build", "-t", CONTAINER_RUNNER_IMAGE, str(dockerfile_dir)], 600)
+    if built.returncode != 0:
+        return None, "building %s failed:\n%s" % (CONTAINER_RUNNER_IMAGE, (built.stdout + built.stderr).strip())
+    return CONTAINER_RUNNER_IMAGE, None
+
+
+def create_host_runner(name, target, repo, labels, token):
+    """Registers and starts a runner as a systemd service on this host."""
+    done = run_runner_script(target, "config.sh",
+                             ["--url", "https://github.com/%s" % repo, "--token", token,
+                              "--name", name, "--labels", labels, "--unattended", "--replace"],
+                             120)
+    if done.returncode != 0:
+        return problem("config.sh failed:\n%s" % (done.stdout + done.stderr).strip())
+    for step in ("install", "start"):
+        done = run_runner_script(target, "svc.sh", [step], 60)
+        if done.returncode != 0:
+            return problem("svc.sh %s failed:\n%s" % (step, (done.stdout + done.stderr).strip()))
+    return 0
+
+
+def create_container_runner(name, target, repo, labels, token, engine):
+    """Registers and starts a runner as a container, /dev/kvm passed through.
+
+    The tarball fetched onto the host lands in target and is bind mounted
+    into the container at /runner; the image's own entrypoint runs
+    config.sh and then run.sh against it, so the version stays whatever
+    runner-versions.conf pinned rather than whatever the image shipped.
+    """
+    image, error = ensure_runner_image(engine)
+    if error:
+        return problem(error)
+    done = run_engine_command(
+        engine,
+        ["run", "-d", "--name", name, "--restart", "unless-stopped", "--device", "/dev/kvm"]
+        + kvm_group_args() +
+        ["-v", "%s:/runner" % target,
+         "-e", "RUNNER_URL=https://github.com/%s" % repo,
+         "-e", "RUNNER_TOKEN=%s" % token,
+         "-e", "RUNNER_NAME=%s" % name,
+         "-e", "RUNNER_LABELS=%s" % labels,
+         image],
+        60)
+    if done.returncode != 0:
+        return problem("%s run failed:\n%s" % (engine, (done.stdout + done.stderr).strip()))
+    return 0
+
+
 def cmd_github_runner_create(args):
     conf = find_runner_conf(args.name) or {}
     repo = args.repo or conf.get("repo")
@@ -1892,8 +1983,17 @@ def cmd_github_runner_create(args):
     backend = args.backend or conf.get("backend") or "host"
     if not repo:
         return problem("no repo for %s. Add it to runner.conf or pass --repo owner/repo." % args.name)
-    if backend != "host":
-        return problem("the %s backend is not implemented yet, only host." % backend)
+    if backend not in ("host", "container"):
+        return problem("unknown backend %s, host or container." % backend)
+
+    engine = None
+    if backend == "container":
+        if running_in_container():
+            return problem("abgal itself is already running inside a container, "
+                           "nested containers are not supported.")
+        engine = container_engine()
+        if not engine:
+            return problem("neither docker nor podman is on this machine.")
 
     row = pick_runner_version(args.version)
     if row is None:
@@ -1914,23 +2014,19 @@ def cmd_github_runner_create(args):
         shutil.rmtree(target, ignore_errors=True)
         return problem("could not get a registration token: %s" % error)
 
-    done = run_runner_script(target, "config.sh",
-                             ["--url", "https://github.com/%s" % repo, "--token", token,
-                              "--name", args.name, "--labels", labels, "--unattended", "--replace"],
-                             120)
-    if done.returncode != 0:
+    if backend == "host":
+        result = create_host_runner(args.name, target, repo, labels, token)
+    else:
+        result = create_container_runner(args.name, target, repo, labels, token, engine)
+    if result != 0:
         shutil.rmtree(target, ignore_errors=True)
-        return problem("config.sh failed:\n%s" % (done.stdout + done.stderr).strip())
+        return result
 
-    for step in ("install", "start"):
-        done = run_runner_script(target, "svc.sh", [step], 60)
-        if done.returncode != 0:
-            return problem("svc.sh %s failed:\n%s" % (step, (done.stdout + done.stderr).strip()))
-
-    write_runner_state(args.name, {
-        "name": args.name, "backend": "host", "repo": repo,
-        "labels": labels, "version": row["version"],
-    })
+    state = {"name": args.name, "backend": backend, "repo": repo,
+             "labels": labels, "version": row["version"]}
+    if backend == "container":
+        state.update(engine=engine, container=args.name)
+    write_runner_state(args.name, state)
     print("%s created and started. Check with: abgal github-runner status -n %s --wait 60"
           % (args.name, args.name))
     return 0

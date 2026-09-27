@@ -75,9 +75,11 @@ def test_create_fails_without_a_repo(home, capsys):
     assert "no repo" in capsys.readouterr().err
 
 
-def test_create_fails_for_container_backend(home, capsys):
-    assert abgal.cmd_github_runner_create(args("ci-01", repo="o/r", backend="container")) == 1
-    assert "not implemented yet" in capsys.readouterr().err
+def test_create_fails_for_an_unknown_backend(home, capsys):
+    (home / "runner.conf").write_text("ci-01 | o/r | linux,x64 | vm\n")
+
+    assert abgal.cmd_github_runner_create(args("ci-01")) == 1
+    assert "unknown backend" in capsys.readouterr().err
 
 
 def test_create_fails_without_a_tested_version(home, capsys):
