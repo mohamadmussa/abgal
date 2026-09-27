@@ -164,3 +164,23 @@ Neustart aufgerufen, und `adb` für alles, was den Bildschirm oder die
 Eingabe eines ausgewählten AVD berührt. Der Dienst hält selbst keinen
 AVD-Zustand außer dem, welches gerade ausgewählt ist, `abgal status
 --json` wird bei jeder Aktualisierung der AVD-Liste erneut gefragt.
+
+## Veröffentlichung über k3s
+
+`helm/abgal-view` ist ein Chart, das ein bereits laufendes
+`view-service.py` über den Traefik veröffentlicht, den ein k3s Cluster
+schon mitbringt, mit einem Login davor, statt `--address 0.0.0.0` direkt
+ins Netzwerk zu öffnen. `view-service.py` selbst läuft weiterhin als
+gewöhnlicher Prozess auf dem Host, das Chart beschreibt nur den Weg dorthin.
+
+```bash
+cd helm
+cp host.example.yaml host.local.yaml   # fill in the two values it asks for
+bash make-auth.sh                      # writes the login hash to auth.local.yaml
+bash apply.sh
+```
+
+`host.local.yaml` und `auth.local.yaml` halten Werte, die zu einem Rechner
+gehören, die Adresse der Bridge, über die ein Pod den Host erreicht, und
+den Passwort-Hash, und werden nie committet. `apply.sh` prüft, dass die
+Route ohne Passwort mit 401 antwortet, bevor es Erfolg meldet.

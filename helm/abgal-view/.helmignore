@@ -1,0 +1,10 @@
+# Local overlays carry machine values and the password hash. They stay out of
+# the packaged chart.
+*.local.yaml
+
+.DS_Store
+.git/
+.gitignore
+*.swp
+*.bak
+*.tmp
