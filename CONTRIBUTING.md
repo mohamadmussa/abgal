@@ -144,7 +144,7 @@ set, so it is safe on any machine. `tests/fakes/` holds `FakeAdb` and
 `tests/conftest.py` put them in place. A test that needs the real adb or a
 real emulator process belongs in `e2e/`.
 
-## Everything visible on GitHub is English
+## Everything visible on GitHub is English first
 
 Code, comments, file names, variable names, branch names, commit subjects, pull
 request titles and bodies, issue titles, label names. All English.

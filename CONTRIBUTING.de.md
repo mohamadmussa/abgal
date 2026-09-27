@@ -151,7 +151,7 @@ ausgeführt hast und was zurückkam.
 `fake_proc` in `tests/conftest.py` setzen sie ein. Ein Test, der das echte
 adb oder einen echten Emulatorprozess braucht, gehört nach `e2e/`.
 
-## Alles auf GitHub Sichtbare ist Englisch
+## Alles auf GitHub Sichtbare ist zuerst Englisch
 
 Code, Kommentare, Dateinamen, Variablennamen, Branchnamen, Commit Betreffzeilen,
 Titel und Text von Pull Requests, Titel von Issues, Namen von Labels. Alles
