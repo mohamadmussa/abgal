@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - "docker/runner/**"
+      - "runner-versions.conf"
       - ".github/workflows/runner-image.yml"
   workflow_dispatch:
 
@@ -28,9 +29,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Read the pinned runner versions
+        id: versions
+        # abgal reads the same file to know which tag to pull, so the image
+        # is tagged with each version it lists, not a version tracked here.
+        run: |
+          image="ghcr.io/${{ github.repository_owner }}/abgal-runner"
+          versions=$(grep -v '^#' runner-versions.conf | grep -v '^[[:space:]]*$' \
+            | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}' | sort -u)
+          {
+            echo "tags<<EOF"
+            echo "$image:latest"
+            for v in $versions; do
+              echo "$image:$v"
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: docker/runner
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/abgal-runner:latest
+          tags: ${{ steps.versions.outputs.tags }}

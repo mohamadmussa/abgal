@@ -48,16 +48,27 @@ GitHub Abfrage.
 
 **Container.** `create` verweigert den Start, wenn abgal selbst schon in
 einem Container läuft, verschachtelte Container werden nicht unterstützt.
-Es zieht das Runner-Image von GHCR, oder baut es aus `docker/runner`, wenn
-das Ziehen fehlschlägt und dieser Ordner vorhanden ist. Das festgelegte
-Tarball aus `runner-versions.conf` wird als Bind Mount unter `/runner` in
-den Container eingehängt, sodass nicht das Container-Image über die
-Runner-Version entscheidet, sondern weiterhin `runner-versions.conf`. Der
-Container bekommt `/dev/kvm` per `--device` durchgereicht, dazu die
-`kvm`-Gruppe des Hosts, damit der Container-Nutzer es öffnen kann.
-`remove` führt `config.sh remove` im Container über `docker exec` oder
-`podman exec` aus, dann wird der Container entfernt. `status` liest den
-eigenen Zustand des Containers über `inspect`.
+Es zieht das Runner-Image mit dem Tag der festgelegten Runner-Version aus
+`runner-versions.conf` (zum Beispiel
+`ghcr.io/mohamadmussa/abgal-runner:2.337.0`), oder baut denselben Tag aus
+`docker/runner`, wenn das Ziehen fehlschlägt und dieser Ordner vorhanden
+ist. `ABGAL_RUNNER_IMAGE` überschreibt den Image-Namen für einen Fork mit
+eigenem Image, Standard ist `ghcr.io/mohamadmussa/abgal-runner`. Das
+festgelegte Tarball aus `runner-versions.conf` wird als Bind Mount unter
+`/runner` in den Container eingehängt, sodass nicht das Container-Image
+über die Runner-Version entscheidet, sondern weiterhin
+`runner-versions.conf`. Der Container läuft unter der eigenen UID des
+Aufrufers, nicht als root, der Runner verweigert die Registrierung als
+root, und root würde auch Dateien unter `runners/<name>` hinterlassen, die
+abgal selbst nicht mehr aufräumen könnte. Er bekommt `/dev/kvm` per
+`--device` durchgereicht, dazu die `kvm`-Gruppe des Hosts, damit er es
+trotzdem öffnen kann. `remove` führt `config.sh remove` im Container über
+`docker exec` oder `podman exec` aus, dann wird der Container entfernt.
+`status` liest den eigenen Zustand des Containers über `inspect`.
+
+Läuft abgal selbst als root, gibt `create` einen Hinweis aus, dass der
+Container das übernimmt und der Runner die Registrierung dann verweigert;
+abgal stattdessen als normaler Nutzer ausführen.
 
 Beide Backends halten eine Zustandsdatei unter `runners/<name>.json` mit
 Name, Backend, Repo, Labels und Version des Runners, beim Container-Backend
@@ -88,4 +99,5 @@ siehe die offenen Punkte in Issue #98.
 
 | Runner Version | Backend | Container Engine | Host OS | Ergebnis |
 |---|---|---|---|---|
-| noch nicht geprüft | | | | |
+| 2.337.0 | container | Docker 20.10.24 | Debian 12 (bookworm) | Registriert sich, zeigt "Listening for Jobs", meldet sich bei remove sauber ab und räumt auf |
+| 2.337.0 | host | entfällt | noch nicht geprüft | |

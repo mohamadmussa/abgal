@@ -1885,7 +1885,16 @@ def run_runner_script(target, script, extra_args, timeout):
         return SimpleNamespace(returncode=1, stdout="", stderr="%s could not run: %s" % (script, err))
 
 
-CONTAINER_RUNNER_IMAGE = "ghcr.io/mohamadmussa/abgal-runner:latest"
+# A fork building its own image only needs to set ABGAL_RUNNER_IMAGE, not
+# change this line, same pattern as ABGAL_GPU and ABGAL_LOCALE below.
+CONTAINER_RUNNER_IMAGE_BASE = os.environ.get("ABGAL_RUNNER_IMAGE", "ghcr.io/mohamadmussa/abgal-runner")
+
+
+def container_runner_image(version):
+    """The image tag for this runner version, adopted straight from
+    runner-versions.conf instead of a version the image would track on its
+    own; the image is pushed under this tag alongside :latest."""
+    return "%s:%s" % (CONTAINER_RUNNER_IMAGE_BASE, version)
 
 
 def running_in_container():
@@ -1914,24 +1923,26 @@ def kvm_group_args():
         return []
 
 
-def ensure_runner_image(engine):
-    """The container runner image: pulled from GHCR, built from docker/runner as a fallback.
+def ensure_runner_image(engine, version):
+    """The container runner image for this runner version, pulled from GHCR,
+    built from docker/runner as a fallback.
 
     Pulling first means a normal create never builds anything; the local
     build only runs when there is no network access to GHCR yet, using
     the Dockerfile this repo carries for exactly that.
     """
-    pulled = run_engine_command(engine, ["pull", CONTAINER_RUNNER_IMAGE], 300)
+    image = container_runner_image(version)
+    pulled = run_engine_command(engine, ["pull", image], 300)
     if pulled.returncode == 0:
-        return CONTAINER_RUNNER_IMAGE, None
+        return image, None
     dockerfile_dir = HOME / "docker" / "runner"
     if not (dockerfile_dir / "Dockerfile").exists():
         return None, ("could not pull %s and there is no local %s to build from:\n%s"
-                      % (CONTAINER_RUNNER_IMAGE, dockerfile_dir, pulled.stderr.strip()))
-    built = run_engine_command(engine, ["build", "-t", CONTAINER_RUNNER_IMAGE, str(dockerfile_dir)], 600)
+                      % (image, dockerfile_dir, pulled.stderr.strip()))
+    built = run_engine_command(engine, ["build", "-t", image, str(dockerfile_dir)], 600)
     if built.returncode != 0:
-        return None, "building %s failed:\n%s" % (CONTAINER_RUNNER_IMAGE, (built.stdout + built.stderr).strip())
-    return CONTAINER_RUNNER_IMAGE, None
+        return None, "building %s failed:\n%s" % (image, (built.stdout + built.stderr).strip())
+    return image, None
 
 
 def create_host_runner(name, target, repo, labels, token):
@@ -1949,20 +1960,29 @@ def create_host_runner(name, target, repo, labels, token):
     return 0
 
 
-def create_container_runner(name, target, repo, labels, token, engine):
+def create_container_runner(name, target, repo, labels, token, engine, version):
     """Registers and starts a runner as a container, /dev/kvm passed through.
 
     The tarball fetched onto the host lands in target and is bind mounted
     into the container at /runner; the image's own entrypoint runs
     config.sh and then run.sh against it, so the version stays whatever
-    runner-versions.conf pinned rather than whatever the image shipped.
+    runner-versions.conf pinned rather than whatever the image shipped. The
+    image itself is pulled or built under that same version's own tag.
+
+    Runs as the calling user's own uid, not root: the runner refuses to
+    register as root, and root would also leave files in target that this
+    same call cannot clean up again once the container is gone.
     """
-    image, error = ensure_runner_image(engine)
+    if os.getuid() == 0:
+        print("Note: abgal itself is running as root, so the runner container will too, "
+              "and the runner refuses to register while running as root.")
+    image, error = ensure_runner_image(engine, version)
     if error:
         return problem(error)
     done = run_engine_command(
         engine,
-        ["run", "-d", "--name", name, "--restart", "unless-stopped", "--device", "/dev/kvm"]
+        ["run", "-d", "--name", name, "--restart", "unless-stopped", "--device", "/dev/kvm",
+         "--user", "%d:%d" % (os.getuid(), os.getgid())]
         + kvm_group_args() +
         ["-v", "%s:/runner" % target,
          "-e", "RUNNER_URL=https://github.com/%s" % repo,
@@ -2017,7 +2037,7 @@ def cmd_github_runner_create(args):
     if backend == "host":
         result = create_host_runner(args.name, target, repo, labels, token)
     else:
-        result = create_container_runner(args.name, target, repo, labels, token, engine)
+        result = create_container_runner(args.name, target, repo, labels, token, engine, row["version"])
     if result != 0:
         shutil.rmtree(target, ignore_errors=True)
         return result

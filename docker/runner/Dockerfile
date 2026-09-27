@@ -23,4 +23,10 @@ WORKDIR /runner
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# abgal runs this image with --user set to the host uid that already owns
+# the bind mounted tarball, an arbitrary uid with no /etc/passwd entry of
+# its own. config.sh and run.sh only need $HOME to be writable, not a real
+# account, and /runner already is.
+ENV HOME=/runner
+
 ENTRYPOINT ["/entrypoint.sh"]

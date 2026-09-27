@@ -45,15 +45,25 @@ runs `svc.sh stop`, `svc.sh uninstall` and `config.sh remove` the same way.
 
 **Container.** `create` refuses to run when abgal itself is already inside
 a container, nested containers are not supported. It pulls the runner
-image from GHCR, or builds it from `docker/runner` when the pull fails and
-that folder is present. The pinned tarball from `runner-versions.conf` is
-bind mounted into the container at `/runner`, so the container image never
-decides the runner's version, `runner-versions.conf` still does. The
-container gets `/dev/kvm` passed through with `--device`, plus the host's
-`kvm` group so the container user can open it. `remove` runs `config.sh
-remove` inside the container through `docker exec` or `podman exec`, then
-removes the container. `status` reads the container's own state through
-`inspect`.
+image tagged with the pinned runner version from `runner-versions.conf`
+(`ghcr.io/mohamadmussa/abgal-runner:2.337.0`, for example), or builds that
+same tag from `docker/runner` when the pull fails and that folder is
+present. `ABGAL_RUNNER_IMAGE` overrides the image name for a fork building
+its own, `ghcr.io/mohamadmussa/abgal-runner` by default. The pinned
+tarball from `runner-versions.conf` is bind mounted into the container at
+`/runner`, so the container image never decides the runner's version,
+`runner-versions.conf` still does. The container runs as the calling
+user's own uid, not root, the runner refuses to register as root and root
+would also leave files under `runners/<name>` that abgal itself could not
+clean up again. It gets `/dev/kvm` passed through with `--device`, plus
+the host's `kvm` group so it can open it despite not being root. `remove`
+runs `config.sh remove` inside the container through `docker exec` or
+`podman exec`, then removes the container. `status` reads the container's
+own state through `inspect`.
+
+If abgal itself runs as root, `create` prints a note that the container
+will inherit that and the runner will then refuse to register; run abgal
+as a normal user instead.
 
 Either backend keeps a state file at `runners/<name>.json` with the
 runner's name, backend, repo, labels, version, and for the container
@@ -82,4 +92,5 @@ issue #98.
 
 | Runner version | Backend | Container engine | Host OS | Result |
 |---|---|---|---|---|
-| not yet verified | | | | |
+| 2.337.0 | container | Docker 20.10.24 | Debian 12 (bookworm) | Registers, shows "Listening for Jobs", deregisters and cleans up on remove |
+| 2.337.0 | host | not applicable | not yet verified | |

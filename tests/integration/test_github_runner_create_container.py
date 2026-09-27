@@ -104,17 +104,54 @@ def test_create_pulls_the_image_and_runs_the_container(home, monkeypatch):
     assert abgal.cmd_github_runner_create(
         args("ci-01", repo="myorg/myrepo", labels="linux,x64")) == 0
 
+    image = abgal.container_runner_image("2.337.0")
     pull_call = next(c for c in calls if c[:2] == ["docker", "pull"])
-    assert pull_call[2] == abgal.CONTAINER_RUNNER_IMAGE
+    assert pull_call[2] == image
     run_call = next(c for c in calls if c[:2] == ["docker", "run"])
     assert "--device" in run_call and "/dev/kvm" in run_call
+    assert "--user" in run_call
     assert "RUNNER_TOKEN=tok3n" in run_call
-    assert run_call[-1] == abgal.CONTAINER_RUNNER_IMAGE
+    assert run_call[-1] == image
 
     state = abgal.read_runner_state("ci-01")
     assert state["backend"] == "container"
     assert state["engine"] == "docker"
     assert state["container"] == "ci-01"
+
+
+def test_create_runs_the_container_as_this_users_own_uid(home, monkeypatch):
+    raw, sha = runner_tarball()
+    write_runner_versions(home, sha)
+    monkeypatch.setattr(abgal.urllib.request, "urlopen", lambda url, timeout: FakeResponse(raw))
+    monkeypatch.setattr(abgal, "container_engine", lambda: "docker")
+    monkeypatch.setattr(abgal.shutil, "which", lambda name: "/usr/bin/gh")
+    monkeypatch.setattr(abgal.os, "getuid", lambda: 1000)
+    monkeypatch.setattr(abgal.os, "getgid", lambda: 1000)
+
+    calls = []
+    monkeypatch.setattr(abgal.subprocess, "run",
+                        lambda command, **k: calls.append(command) or
+                        (done(stdout="tok3n\n") if command[:2] == ["gh", "api"] else done()))
+
+    assert abgal.cmd_github_runner_create(args("ci-01", repo="myorg/myrepo")) == 0
+
+    run_call = next(c for c in calls if c[:2] == ["docker", "run"])
+    assert run_call[run_call.index("--user") + 1] == "1000:1000"
+
+
+def test_create_warns_when_abgal_itself_runs_as_root(home, monkeypatch, capsys):
+    raw, sha = runner_tarball()
+    write_runner_versions(home, sha)
+    monkeypatch.setattr(abgal.urllib.request, "urlopen", lambda url, timeout: FakeResponse(raw))
+    monkeypatch.setattr(abgal, "container_engine", lambda: "docker")
+    monkeypatch.setattr(abgal.shutil, "which", lambda name: "/usr/bin/gh")
+    monkeypatch.setattr(abgal.os, "getuid", lambda: 0)
+    monkeypatch.setattr(abgal.subprocess, "run",
+                        lambda command, **k: done(stdout="tok3n\n") if command[:2] == ["gh", "api"] else done())
+
+    assert abgal.cmd_github_runner_create(args("ci-01", repo="myorg/myrepo")) == 0
+
+    assert "running as root" in capsys.readouterr().out
 
 
 def test_create_builds_locally_when_the_pull_fails(home, monkeypatch):
