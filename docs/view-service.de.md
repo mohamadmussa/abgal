@@ -1,5 +1,7 @@
 # Ansicht und Steuerung aus dem Browser
 
+*[In English](view-service.md)*
+
 `view/view-service.py` zeigt jedes Android Virtual Device (AVD), das
 `abgal` kennt, im Browser, erlaubt einem Betrachter zu wechseln, welches
 AVD gerade zu sehen ist, es mit Maus und Tastatur zu steuern, und es zu
@@ -17,6 +19,7 @@ python3 view/view-service.py
 | `--address` | `127.0.0.1` | Die Schnittstelle, an die gebunden wird. Standardmäßig nur Loopback, für Zugriff von einem anderen Rechner mitgeben |
 | `--port` | `8099` | Der Port, auf dem gehorcht wird |
 | `--step` | `2` | Die Standard-Verkleinerung des Bildschirms, 1 ist volle Größe, höher ist kleiner und schneller |
+| `--allow-host <name>` | keiner | Ein zusätzlicher Host-Name, den der Dienst im Host-Header annimmt, wiederholbar. Nur nötig, wenn die Seite über einen DNS-Namen statt localhost erreicht wird, eine literale IP-Adresse wird immer angenommen |
 
 `http://127.0.0.1:8099/` (oder die gewählte Adresse und der gewählte Port)
 im Browser öffnen. Der Dienst gibt seine eigene URL beim Start aus.
@@ -89,6 +92,40 @@ zu 200 Zeichen, bei Enter.
 Ein DEBUG-Feld, standardmäßig eingeklappt, kann jede Anfrage der Seite und
 ihre Antwort zeigen, hilfreich wenn etwas auf dem Bildschirm nicht zu dem
 passt, was angeklickt wurde.
+
+## Sicherheit
+
+Jede Anfrage außer dem Laden der Seite selbst braucht ein Token. Der
+Dienst erzeugt bei jedem Start ein frisches Token und legt es in die
+Seite, die Seite schickt dieses Token bei jeder Anfrage in einem Header.
+
+Eine fremde Webseite kann diesen Header nicht setzen, ohne dass der
+Browser vorher den Dienst um Erlaubnis fragt, und der Dienst erteilt diese
+Erlaubnis nie, nur die Seite selbst kann also eine Anfrage mit diesem
+Header erzeugen.
+
+Der Host-Header jeder Anfrage muss localhost sein, eine literale
+IP-Adresse, oder ein mit `--allow-host` angegebener Name. Das verhindert
+DNS Rebinding, denn eine literale Adresse lässt sich nicht umleiten und
+ein Name muss eigens erlaubt werden. Ein Origin-Header muss, wenn er
+gesendet wird, zum Host-Header passen.
+
+POST-Körper müssen `application/json` sein. Text aus TEXT erreicht das
+AVD als ein einziges zitiertes Wort, Steuerzeichen werden abgelehnt.
+Fehler erreichen die Seite nur als allgemeine Meldung, die Einzelheiten
+stehen in der eigenen Log-Ausgabe des Dienstes. Je AVD läuft nur ein
+Start, Stopp oder Neustart gleichzeitig, ein zweiter bekommt 409.
+
+Das schützt nicht gegen alles. Wer die Seite öffnen kann, kann sie
+benutzen, das Token ist kein Login und es gibt kein Benutzerkonto. Der
+Datenverkehr läuft als reines HTTP ohne Verschlüsselung, ein anderer
+Rechner auf dem Weg im selben Netzwerk kann ihn mitlesen, das Token
+eingeschlossen. Eine Bindung an eine andere Schnittstelle mit `--address`
+gibt daher jedem, der diese Adresse erreichen kann, die volle Kontrolle
+über jedes AVD.
+
+Standardmäßig bei der Loopback-Adresse bleiben, oder den Dienst über
+einen SSH-Tunnel erreichen.
 
 ## Was es braucht
 

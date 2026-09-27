@@ -1,5 +1,7 @@
 # View and control from a browser
 
+*[Auf Deutsch](view-service.de.md)*
+
 `view/view-service.py` shows every guest `abgal` knows about in a browser,
 lets a viewer switch which one is on screen, control it with the mouse and
 keyboard, and start, stop or restart it without touching a terminal.
@@ -16,6 +18,7 @@ python3 view/view-service.py
 | `--address` | `127.0.0.1` | The interface to bind to. Loopback only by default, pass this to reach it from another machine |
 | `--port` | `8099` | The port to listen on |
 | `--step` | `2` | The default screen downscale, 1 is full size, higher is smaller and faster |
+| `--allow-host <name>` | none | An extra host name the service accepts in the Host header, repeatable. Needed only when the page is reached through a DNS name other than localhost, a literal IP address is always accepted |
 
 Open `http://127.0.0.1:8099/` (or whatever address and port you chose) in a
 browser. The service prints its own URL on startup.
@@ -85,6 +88,37 @@ characters, on Enter.
 A DEBUG panel, collapsed by default, can show every request the page made
 and how it answered, useful when something on screen does not match what
 was clicked.
+
+## Security
+
+Every request except loading the page itself needs a token. The service
+creates a fresh token at every start and puts it into the page, the page
+sends that token in a header on each request.
+
+A foreign web page cannot add that header without the browser first asking
+the service for permission, and the service never grants it, so only the
+page itself can produce a request that carries the token.
+
+The Host header on every request must be localhost, a literal IP address,
+or a name given with `--allow-host`. This stops DNS rebinding, since a
+literal address cannot be rebound and a name has to be allowed on purpose.
+An Origin header, when sent, must match the Host header.
+
+POST bodies must be `application/json`. Text sent from TEXT reaches the
+guest as one quoted word, control characters are refused. Errors reach the
+page only as a generic message, the details stay in the service's own log
+output. Only one start, stop or restart per guest runs at a time, a second
+one gets 409.
+
+This does not protect against everything. Anyone who can open the page can
+use it, the token is not a login and there is no user account. Traffic is
+plain HTTP without encryption, so another machine on the path in the same
+network can read it, including the token. Binding to another interface
+with `--address` therefore gives everyone who can reach that address full
+control of every guest.
+
+Keep the default loopback address, or reach the service through an SSH
+tunnel instead.
 
 ## What it needs
 
