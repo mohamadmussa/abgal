@@ -1,0 +1,78 @@
+# Whether a GitHub-hosted runner can run AbGal at all, see #94 and #13.
+# Triggered by hand, one matrix leg per candidate runner. ubuntu-slim runs
+# unprivileged, so reaching /dev/kvm at all is itself part of the result.
+# The long run over sustained load from #94 is a separate, later workflow.
+name: hosted-runner-check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm, ubuntu-slim]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The default /dev/kvm permissions on a hosted runner grant only the
+      # kvm group, and a session opened before group membership changes does
+      # not see it. This widens the device node instead, no reboot needed,
+      # and is a no-op worth trying even where it may not be allowed to run.
+      - name: Widen /dev/kvm
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-abgal-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+        continue-on-error: true
+
+      - name: abgal setup
+        id: setup
+        run: python3 abgal setup --accept-licenses
+        continue-on-error: true
+
+      - name: abgal doctor
+        id: doctor
+        run: python3 abgal doctor
+        continue-on-error: true
+
+      - name: Create the smallest guest
+        id: create
+        run: python3 abgal create phone-1080x2400-480-api35-x86_64 --as ci --yes
+        continue-on-error: true
+
+      - name: Start the guest
+        id: start
+        run: python3 abgal start -n ci
+        continue-on-error: true
+
+      - name: abgal status
+        id: status
+        run: python3 abgal status
+        continue-on-error: true
+
+      - name: Stop and delete the guest
+        if: always()
+        run: |
+          python3 abgal stop -n ci || true
+          python3 abgal delete -n ci --yes || true
+
+      - name: Record the result
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.runner }}"
+            echo ""
+            echo "| step | outcome |"
+            echo "|---|---|"
+            echo "| setup | ${{ steps.setup.outcome }} |"
+            echo "| doctor | ${{ steps.doctor.outcome }} |"
+            echo "| create | ${{ steps.create.outcome }} |"
+            echo "| start | ${{ steps.start.outcome }} |"
+            echo "| status | ${{ steps.status.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
