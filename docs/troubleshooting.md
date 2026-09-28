@@ -84,6 +84,37 @@ The guest runs but Android has not finished booting. On a slow machine with
 `--timeout 600`, or look at the guest with
 `sdk/platform-tools/adb -s emulator-5554 logcat`.
 
+## The temperature watch did not start
+
+```text
+ERROR: ABGAL_TEMP_STOP=9x is not a whole number.
+```
+
+One of the `ABGAL_TEMP_*` variables holds something other than digits. No
+guest was started. Fix or unset the variable and start again.
+
+```text
+ERROR: no processor temperature measurable, so no guest could be watched.
+```
+
+Neither the `x86_pkg_temp` zone nor `sensors` gave a value, and no guest was
+started. Both readings come from Intel drivers: the zone from the kernel
+module `x86_pkg_temp_thermal`, and the line `Package id 0` that the watch
+looks for in `sensors` from `coretemp`. On Debian `sensors` comes from the
+`lm-sensors` package. An AMD processor has neither, so there the watch cannot
+run yet. `--no-watch` starts the guest without it, and then nothing stops it
+when the processor gets too hot.
+
+```text
+ERROR: the temperature watch for dev ended at once with exit code 1.
+```
+
+The guest runs, but nothing protects it from overheating. The message names
+the watch's log, and its last line says why, unless the log itself could not
+be written, as with an `ABGAL_TEMP_LOG` in a folder you cannot write to. In a
+batch no further guest is started. Stop the guest with `abgal stop -n dev`
+before you fix it.
+
 ## A guest stopped by itself
 
 Look at the temperature watch:
