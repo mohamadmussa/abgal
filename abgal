@@ -16,6 +16,7 @@ docs/troubleshooting.md.
   abgal start -n <a> -n <b>           start them one after another
   abgal status                        what is on disk and what is running
   abgal stop -n <guest>               stop that guest
+  abgal shutdown                      stop every guest and its watch, disks stay
   abgal watch -n <guest>              the temperature watch start runs by itself
   abgal webui                         the browser view, open to the network
   abgal github-runner status          local liveness of the self hosted runners
@@ -300,6 +301,26 @@ def qemu_processes():
             continue
         args = [a.decode(errors="replace") for a in raw.split(b"\0") if a]
         yield int(entry.name), args
+
+
+def watch_processes():
+    """Every running 'abgal watch' process, as pid and its argument list.
+
+    start detaches the watch with start_new_session=True, so it has no
+    parent-child link to anything abgal could wait on. This is the same
+    /proc scan qemu_processes runs, pointed at the watch subcommand instead.
+    """
+    script = str(Path(__file__).resolve())
+    for entry in PROC.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        args = [a.decode(errors="replace") for a in raw.split(b"\0") if a]
+        if script in args and "watch" in args:
+            yield int(entry.name), args
 
 
 def running_pid(name):
@@ -1168,6 +1189,118 @@ def cmd_stop(args):
     else:
         print("%d of %d stopped. Memory available: %d MB." % (done, len(targets), free))
     return 0 if all(results) else 1
+
+
+def confirm_delete_all(names):
+    """A typed arithmetic answer, fresh every call.
+
+    Enter, yes or y answers nothing here on purpose, --DELETE takes down every
+    guest and its disk at once, a single stray keystroke must not be enough.
+    """
+    a, b = secrets.randbelow(41) + 10, secrets.randbelow(41) + 10
+    if not sys.stdin.isatty():
+        fail("nothing to ask on. --DELETE needs a terminal to confirm.")
+    try:
+        answer = input(
+            "--DELETE removes %d guest(s) and their disks for good: %s.\n"
+            "This cannot be undone. What is %d + %d? " % (len(names), ", ".join(names), a, b)
+        )
+    except EOFError:
+        print()
+        answer = ""
+    return answer.strip() == str(a + b)
+
+
+def signal_watches(pending, number):
+    for pid in pending:
+        try:
+            os.kill(pid, number)
+        except OSError:
+            pass
+
+
+def surviving_watches(pending):
+    return {pid for pid in pending if (PROC / str(pid)).exists()}
+
+
+def wait_for_watches(pending, grace):
+    deadline = time.time() + grace
+    while pending and time.time() < deadline:
+        pending = surviving_watches(pending)
+        if pending:
+            time.sleep(1)
+    return surviving_watches(pending)
+
+
+def stop_watches(grace, say=print):
+    """Ends every detached 'abgal watch' process still running.
+
+    A watch left alive after its guest is already gone would otherwise only
+    notice on its next poll, up to ABGAL_TEMP_INTERVAL seconds later. The
+    orderly signal first, the hard one only if that grace runs out, the same
+    escalation stop_one gives a guest.
+    """
+    pending = {pid for pid, _ in watch_processes()}
+    if not pending:
+        return True
+    say("Stopping %d temperature watch(es)." % len(pending))
+
+    for number in (signal.SIGTERM, signal.SIGKILL):
+        signal_watches(pending, number)
+        pending = wait_for_watches(pending, grace)
+        if not pending:
+            return True
+
+    say("%d temperature watch(es) still running. Nothing else this program can do."
+        % len(pending))
+    return False
+
+
+def cmd_shutdown(args):
+    live = [g for g, _, _ in guests() if running_pid(g) is not None]
+    if not live:
+        print("Nothing is running.")
+    else:
+        print("Stopping %d guest(s):" % len(live))
+        serials = running_serials()
+        results = [stop_one(name, serials.get(name), args.grace) for name in live]
+        stopped = [name for name, ok in zip(live, results) if ok]
+        print("Stopped %d of %d: %s" % (len(stopped), len(live), ", ".join(stopped) or "none"))
+        if len(stopped) != len(live):
+            fail("not every guest stopped. Nothing else was touched.")
+
+    if not stop_watches(args.grace):
+        fail("a temperature watch did not stop. Nothing else was touched.")
+
+    if not args.DELETE:
+        print("Every guest and its disk stays in place. A start needs no create.")
+        return 0
+
+    names = [g for g, _, _ in guests()]
+    if not names:
+        print("No guests on disk, nothing for --DELETE to remove.")
+        return 0
+
+    if not confirm_delete_all(names):
+        print("Wrong answer. Nothing was deleted.")
+        return 1
+
+    failed = []
+    for name in names:
+        # Quiet, for the same reason cmd_delete is: avdmanager ends its own
+        # line without a newline, and the summary below says the same thing.
+        if run_tool([AVDMANAGER, "delete", "avd", "-n", name], quiet=True) != 0 \
+                or guest_folder(name).exists():
+            failed.append(name)
+    if failed:
+        fail("%d of %d guests were not removed: %s"
+             % (len(failed), len(names), ", ".join(failed)))
+
+    # The logs stay, for the same reason cmd_delete keeps them: cheap, and the
+    # record of what ran here does not depend on the guest still existing.
+    print("Removed %d guest(s): %s. Their folders under logs/ were left in place."
+          % (len(names), ", ".join(names)))
+    return 0
 
 
 def cmd_status(args):
@@ -2399,6 +2532,7 @@ EXAMPLES = """examples:
   abgal start -n dev-01 --gpu host --locale ar-SA
   abgal status
   abgal stop -n dev-01
+  abgal shutdown
   abgal webui
   abgal webui --address 127.0.0.1 --port 8100
   abgal github-runner status
@@ -2481,6 +2615,15 @@ def build_parser():
     stop.add_argument("--grace", type=int, default=GRACE_SECONDS, metavar="SECONDS",
                       help="how long to wait for an orderly shutdown")
     stop.set_defaults(run=cmd_stop, parser=stop)
+
+    shutdown = subs.add_parser(
+        "shutdown", help="stop every guest and its temperature watch, disks stay")
+    shutdown.add_argument("--grace", type=int, default=GRACE_SECONDS, metavar="SECONDS",
+                          help="how long to wait for an orderly shutdown")
+    shutdown.add_argument("--DELETE", action="store_true",
+                          help="after stopping, also delete every guest and its disk."
+                               " Asks for a typed confirmation first")
+    shutdown.set_defaults(run=cmd_shutdown)
 
     status = subs.add_parser("status", help="what is on disk and what is running")
     status.add_argument("-n", "--name", metavar="GUEST",

@@ -51,6 +51,13 @@ class FakeProc:
                 "-avd", name, "-no-window"]
         self.add_process(pid, abgal.QEMU, args, **stats)
 
+    def add_watch(self, pid, name=None, **stats):
+        """One temperature watch process, with the command line start detaches."""
+        args = ["python3", str(abgal.Path(abgal.__file__).resolve()), "watch"]
+        if name:
+            args += ["-n", name]
+        self.add_process(pid, "python3", args, **stats)
+
     def remove(self, pid):
         shutil.rmtree(self.root / str(pid), ignore_errors=True)
 
