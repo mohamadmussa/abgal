@@ -33,6 +33,7 @@ app.conf
 !docs/view-service.de.md
 !README.de.md
 !CONTRIBUTING.de.md
+!apk/README.de.md
 
 # Local files and folders of any kind.
 *.local.*
