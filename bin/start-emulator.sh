@@ -15,7 +15,9 @@
 #   ABGAL_LOCALE=ar-SA bash start-emulator.sh <g>  a different system language
 #   ABGAL_WIPE=1 bash start-emulator.sh <g>        wipe user data, first boot again
 #
-# Normally called through "abgal start", which handles logs and locking.
+# Normally called through "abgal start", which writes a log, checks the free
+# memory first and starts the temperature watch only once the guest answers.
+# This script is the plain version for a shell and starts the watch up front.
 
 set -euo pipefail
 
@@ -113,6 +115,11 @@ ARGS+=(
   # CI run that nobody is sitting at.
   -no-metrics
   -gpu "$GPU"
+  # Without this the emulator ignores hw.ramSize and silently raises every
+  # guest to 2560 MB. With it the requested size is honoured exactly, and
+  # ro.config.low_ram still comes back empty, so the guest does not declare
+  # itself a low memory device.
+  -lowram
   -no-snapshot-load     # every run starts cold, or it hangs on the previous one
   -no-snapshot-save
   -prop "persist.sys.locale=$LOCALE"
