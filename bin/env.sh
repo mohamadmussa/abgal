@@ -43,10 +43,18 @@ ANDROID_HOME="$ABGAL_HOME/sdk"
 ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_HOME ANDROID_SDK_ROOT
 
-# The virtual devices also live inside the project folder instead of under
-# ~/.android/avd.
+# The virtual devices also live inside the project folder, in their own
+# avd/ and not mixed into android-home/ below, since the disk images run
+# to gigabytes and the SDK tools' own files do not.
 ANDROID_AVD_HOME="$ABGAL_HOME/avd"
 export ANDROID_AVD_HOME
+
+# User files of the SDK tools, also inside the project folder. avdmanager and
+# the Android CLI read the first name, the emulator only the second. adb
+# reads neither and keeps its key in ~/.android on purpose.
+ANDROID_USER_HOME="$ABGAL_HOME/android-home"
+ANDROID_EMULATOR_HOME="$ABGAL_HOME/android-home"
+export ANDROID_USER_HOME ANDROID_EMULATOR_HOME
 
 case ":$PATH:" in
   *":$ANDROID_HOME/platform-tools:"*) ;;

@@ -164,9 +164,9 @@ default, because git refuses to let a repository activate its own hooks, and for
 good reason. Until you run it, nothing is checking you.
 
 Exit code 0 means clean, and nothing else is a pass. A finding ends with 1, and
-so does a scan that could not run. If the gate reports something in a file you
-are adding, do not work around the gate. Either the file does not belong in the repository, or the
-pattern list needs a real discussion in an issue.
+a scan that could not run ends with 2. If the gate reports something in a file
+you are adding, do not work around the gate. Either the file does not belong in
+the repository, or the pattern list needs a real discussion in an issue.
 
 Patterns describing a shape, an address, a phone number, a private IP, live in
 the script and are safe to publish. Literal words that must never appear live in
