@@ -10,8 +10,9 @@ ERROR: the Android SDK is not under .../abgal/sdk.
        Both platform-tools/adb and emulator/emulator have to be there.
 ```
 
-Step 2 of the [quick start](../README.md#quick-start) has not run, or ran
-into another folder. `sdk/` has to sit next to the `abgal` file.
+`./abgal setup` has not run, or the SDK was put into another folder. `sdk/`
+has to sit next to the `abgal` file. `./abgal doctor` names each part that is
+missing.
 
 ```text
 ERROR: avdmanager or android is not under .../sdk/cmdline-tools/latest/bin.
@@ -19,8 +20,78 @@ ERROR: avdmanager or android is not under .../sdk/cmdline-tools/latest/bin.
 ```
 
 Either the command line tools are older than 23.0, which have no `android`
-command, or the zip was unpacked one level too deep. The folder has to be
-`sdk/cmdline-tools/latest/bin`, not `sdk/cmdline-tools/cmdline-tools/bin`.
+command, or a zip unpacked by hand went one level too deep. The folder has to
+be `sdk/cmdline-tools/latest/bin`, not `sdk/cmdline-tools/cmdline-tools/bin`.
+
+## Setup did not finish
+
+```text
+ERROR: nothing fetched, there is nobody to ask.
+```
+
+`setup` ran without a terminal, as in a CI job, and could not ask about the
+license. Read it at the address `setup` printed, then run
+`./abgal setup --accept-licenses`.
+
+```text
+ERROR: nothing fetched, the license was not accepted.
+```
+
+The answer to the license question was not `y`. Nothing was downloaded. Run
+`setup` again once you have read the license.
+
+```text
+ERROR: sdk/cmdline-tools/latest has 19.0, and AbGal needs 23.0 or newer.
+```
+
+A part is older than the minimum in `versions.conf`. `setup` does not replace
+a folder it did not make. Move it aside, for example to
+`sdk/cmdline-tools-19.0`, and run `setup` again.
+
+```text
+ERROR: the download has sha1 ..., versions.conf expects ....
+```
+
+The zip is not the one `versions.conf` names. Nothing was unpacked and the
+download is deleted. Run `setup` again. If the checksum stays wrong, Google
+has replaced the file under the same address, and `versions.conf` needs a new
+line.
+
+```text
+ERROR: could not fetch https://dl.google.com/android/repository/...:
+```
+
+The line below it is the reason from the network. Behind a proxy, set
+`https_proxy` in the shell that runs `setup`. Nothing is left behind, so run
+`setup` again once the address opens in a browser on the same machine.
+
+```text
+ERROR: could not unpack into sdk/cmdline-tools/latest:
+```
+
+Most often the folder already exists from an earlier attempt, but without the
+`source.properties` that marks a finished part. Move it aside and run `setup`
+again. The download and the half unpacked copy are removed.
+
+```text
+ERROR: .../sdk/cmdline-tools/latest/bin/android is missing, so platform-tools, emulator cannot be installed.
+```
+
+The platform tools and the emulator come from the Android CLI, which is part
+of the command line tools. The folder `sdk/cmdline-tools/latest` holds tools
+without it. Move the folder aside and run `setup` again.
+
+```text
+ERROR: the Android CLI did not install emulator.
+```
+
+The CLI ended, but the folder of that part is not under `sdk/`. The CLI does
+not always say why. Run `setup` again, and if it fails a second time, run the
+line by hand to see the CLI's own output:
+
+```bash
+sdk/cmdline-tools/latest/bin/android --no-metrics --sdk="$PWD/sdk" sdk install emulator
+```
 
 ## The device is not listed
 
