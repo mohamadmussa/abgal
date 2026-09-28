@@ -13,6 +13,7 @@ a plain ABGAL_E2E=1 run elsewhere never needs it.
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,21 @@ def run_abgal(*args):
                           capture_output=True, text=True, timeout=180)
 
 
+def wait_for_registration(name, timeout=30):
+    """Polls the log until it reports listening.
+
+    status --wait only reports the container process as up, which happens
+    before config.sh inside it has finished registering, so a single log
+    read right after status can still catch it mid registration.
+    """
+    deadline = time.time() + timeout
+    log = run_abgal("github-runner", "log", "-n", name)
+    while "listening for jobs" not in log.stdout.lower() and time.time() < deadline:
+        time.sleep(2)
+        log = run_abgal("github-runner", "log", "-n", name)
+    return log
+
+
 def test_container_backend_registers_runs_and_deregisters():
     name = "abgal-e2e-%d" % os.getpid()
     try:
@@ -41,8 +57,8 @@ def test_container_backend_registers_runs_and_deregisters():
         assert status.returncode == 0, status.stdout + status.stderr
         assert " up " in status.stdout
 
-        log = run_abgal("github-runner", "log", "-n", name)
-        assert "listening for jobs" in log.stdout.lower()
+        log = wait_for_registration(name)
+        assert "listening for jobs" in log.stdout.lower(), log.stdout + log.stderr
     finally:
         removed = run_abgal("github-runner", "remove", "-n", name)
         assert removed.returncode == 0, removed.stdout + removed.stderr
