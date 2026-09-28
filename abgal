@@ -16,7 +16,7 @@ docs/troubleshooting.md.
   abgal start -n <a> -n <b>           start them one after another
   abgal status                        what is on disk and what is running
   abgal stop -n <guest>               stop that guest
-  abgal shutdown                      stop everything, guests stay on disk
+  abgal shutdown                      stop every guest and its watch, disks stay
   abgal watch -n <guest>              the temperature watch start runs by itself
   abgal webui                         the browser view, open to the network
 
@@ -1917,7 +1917,7 @@ def build_parser():
     stop.set_defaults(run=cmd_stop, parser=stop)
 
     shutdown = subs.add_parser(
-        "shutdown", help="stop everything abgal has running, guests stay on disk")
+        "shutdown", help="stop every guest and its temperature watch, disks stay")
     shutdown.add_argument("--grace", type=int, default=GRACE_SECONDS, metavar="SECONDS",
                           help="how long to wait for an orderly shutdown")
     shutdown.add_argument("--DELETE", action="store_true",
