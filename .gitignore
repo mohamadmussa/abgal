@@ -8,6 +8,10 @@ avd/
 # abgal writes at create time and the installed runner software itself.
 runners/
 
+# The GitHub Actions runner registered by hand for this repo's own CI,
+# installed straight into the clone so everything stays in one place.
+actions-runner/
+
 # User files of the SDK tools, redirected here from ~/.android. Includes a
 # copy of the private adb key, so this never reaches a commit.
 android-home/
