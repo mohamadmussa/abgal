@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 loader = SourceFileLoader("view_service", str(ROOT / "view" / "view-service.py"))
 spec = importlib.util.spec_from_loader("view_service", loader)

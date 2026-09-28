@@ -15,6 +15,7 @@ def make_guest(tmp_path, name, template="phone-1080x2400-480-api35-x86_64"):
 
 
 def run_status_json(monkeypatch, tmp_path, **kwargs):
+    # The fake_proc fixture in the callers keeps running_pid off the real /proc.
     monkeypatch.setattr(abgal, "AVD", tmp_path)
     monkeypatch.setattr(abgal, "attached", lambda: {})
     monkeypatch.setattr(abgal, "available_mb", lambda: 4096)
@@ -25,7 +26,7 @@ def run_status_json(monkeypatch, tmp_path, **kwargs):
     return json.loads(out.getvalue())
 
 
-def test_status_json_lists_every_guest_on_disk(monkeypatch, tmp_path):
+def test_status_json_lists_every_guest_on_disk(monkeypatch, tmp_path, fake_proc):
     make_guest(tmp_path, "dev-a")
     make_guest(tmp_path, "dev-b")
 
@@ -36,7 +37,7 @@ def test_status_json_lists_every_guest_on_disk(monkeypatch, tmp_path):
     assert names == {"dev-a", "dev-b"}
 
 
-def test_status_json_reports_no_pid_or_serial_when_not_running(monkeypatch, tmp_path):
+def test_status_json_reports_no_pid_or_serial_when_not_running(monkeypatch, tmp_path, fake_proc):
     make_guest(tmp_path, "dev-a")
 
     result = run_status_json(monkeypatch, tmp_path)
@@ -48,7 +49,7 @@ def test_status_json_reports_no_pid_or_serial_when_not_running(monkeypatch, tmp_
     assert row["stats"] is None
 
 
-def test_status_json_with_no_guests_on_disk_is_an_empty_list(monkeypatch, tmp_path):
+def test_status_json_with_no_guests_on_disk_is_an_empty_list(monkeypatch, tmp_path, fake_proc):
     result = run_status_json(monkeypatch, tmp_path)
 
     assert result["guests"] == []
