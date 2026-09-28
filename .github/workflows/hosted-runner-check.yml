@@ -47,9 +47,12 @@ jobs:
         run: python3 abgal create phone-1080x2400-480-api35-x86_64 --as ci
         continue-on-error: true
 
+      # A hosted runner exposes no processor temperature, so the watch
+      # abgal start launches by default has nothing to read and refuses to
+      # start at all. --no-watch skips it, see #94.
       - name: Start the guest
         id: start
-        run: python3 abgal start -n ci
+        run: python3 abgal start -n ci --no-watch
         continue-on-error: true
 
       - name: abgal status
