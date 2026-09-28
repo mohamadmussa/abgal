@@ -1,0 +1,6 @@
+# ubuntu-slim is a GitHub-hosted runner label actionlint's bundled list does
+# not know yet, not a self-hosted runner. Declaring it here is the only way
+# to use it without actionlint flagging it as unknown, see #94.
+self-hosted-runner:
+  labels:
+    - ubuntu-slim

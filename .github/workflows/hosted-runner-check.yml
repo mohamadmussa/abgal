@@ -1,0 +1,108 @@
+# Whether a GitHub-hosted runner can run AbGal at all, see #94 and #13.
+# Triggered by hand, one matrix leg per candidate runner. ubuntu-slim runs
+# unprivileged, so reaching /dev/kvm at all is itself part of the result.
+# The long run over sustained load from #94 is a separate, later workflow.
+name: hosted-runner-check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm, ubuntu-slim]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The default /dev/kvm permissions on a hosted runner grant only the
+      # kvm group, and a session opened before group membership changes does
+      # not see it. This widens the device node instead, no reboot needed,
+      # and is a no-op worth trying even where it may not be allowed to run.
+      - name: Widen /dev/kvm
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-abgal-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+        continue-on-error: true
+
+      - name: abgal setup
+        id: setup
+        run: python3 abgal setup --accept-licenses
+        continue-on-error: true
+
+      - name: abgal doctor
+        id: doctor
+        run: python3 abgal doctor
+        continue-on-error: true
+
+      - name: Create the smallest guest
+        id: create
+        run: python3 abgal create phone-1080x2400-480-api35-x86_64 --as ci --yes
+        continue-on-error: true
+
+      - name: Start the guest
+        id: start
+        run: python3 abgal start -n ci
+        continue-on-error: true
+
+      - name: abgal status
+        id: status
+        run: python3 abgal status
+        continue-on-error: true
+
+      - name: Stop the guest
+        id: stop
+        if: always()
+        run: python3 abgal stop -n ci
+        continue-on-error: true
+
+      - name: Delete the guest
+        id: delete
+        if: always()
+        run: python3 abgal delete -n ci --yes
+        continue-on-error: true
+
+      - name: Record the result
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.runner }}"
+            echo ""
+            echo "| step | outcome |"
+            echo "|---|---|"
+            echo "| setup | ${{ steps.setup.outcome }} |"
+            echo "| doctor | ${{ steps.doctor.outcome }} |"
+            echo "| create | ${{ steps.create.outcome }} |"
+            echo "| start | ${{ steps.start.outcome }} |"
+            echo "| status | ${{ steps.status.outcome }} |"
+            echo "| stop | ${{ steps.stop.outcome }} |"
+            echo "| delete | ${{ steps.delete.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # continue-on-error keeps every step running so the summary above is
+      # complete even when an early step fails, but that leaves the job
+      # itself green regardless. Fail it here for real so a passing check
+      # in the Actions list means what it says.
+      - name: Fail the job if any step failed
+        if: always()
+        run: |
+          for outcome in \
+            "${{ steps.setup.outcome }}" \
+            "${{ steps.doctor.outcome }}" \
+            "${{ steps.create.outcome }}" \
+            "${{ steps.start.outcome }}" \
+            "${{ steps.status.outcome }}" \
+            "${{ steps.stop.outcome }}" \
+            "${{ steps.delete.outcome }}"; do
+            if [ "$outcome" != "success" ]; then
+              echo "At least one step did not succeed, see the summary above." >&2
+              exit 1
+            fi
+          done
