@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060.00 1008.00" width="1060.00" height="1008.00" role="img" aria-label="Sequence diagram of abgal start">
+<style>
+:root {
+  --bg: #1b1b1f;
+  --fg: #e9e9ee;
+  --muted: #a3a3ad;
+  --box-fill: #2a2a30;
+  --box-stroke: #c7c7d1;
+  --decision-fill: #26283a;
+  --track: #3c3c44;
+  --accent: #7ea2ff;
+  --ok-fill: #173524;
+  --ok-stroke: #4ade80;
+  --bad-fill: #3a1c1c;
+  --bad-stroke: #f87171;
+  --arrow: #c7c7d1;
+}
+svg { background: var(--bg); }
+text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
+.label-actor { font-size: 10px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.label-main { font-size: 12.5px; }
+.label-duration { font-size: 11px; font-style: italic; fill: var(--muted); }
+.label-edge { font-size: 11px; fill: var(--muted); }
+.label-note { font-size: 11px; font-style: italic; fill: var(--muted); }
+.box, .box-instant, .box-action { fill: var(--box-fill); stroke: var(--box-stroke); stroke-width: 1.5; }
+.box-decision { fill: var(--decision-fill); stroke: var(--box-stroke); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.box-ok { fill: var(--ok-fill); stroke: var(--ok-stroke); stroke-width: 2; }
+.box-bad { fill: var(--bad-fill); stroke: var(--bad-stroke); stroke-width: 2; }
+.bar-track { fill: var(--track); }
+.bar-fill { fill: var(--accent); }
+.edge { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+.arrowhead { fill: var(--arrow); }
+@keyframes bar-fill { from { width: 0; } to { width: 220.00px; } }
+#bar-fill-poll-console { animation: bar-fill 3.99s linear infinite; }
+#bar-fill-wait-settle { animation: bar-fill 0.40s linear infinite; }
+#bar-fill-poll-boot { animation: bar-fill 3.99s linear infinite; }
+</style>
+<style>
+.lane-rail { stroke: var(--box-stroke); stroke-width: 1; stroke-dasharray: 2 4; fill: none; }
+.seq-edge-req { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+.seq-edge-resp { stroke: var(--arrow); stroke-width: 1.5; stroke-dasharray: 5 3; fill: none; }
+.seq-edge-poll { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+.seq-edge-fail { stroke: var(--bad-stroke); stroke-width: 1.5; fill: none; }
+.seq-rect-poll { fill: var(--decision-fill); stroke: none; }
+.seq-rect-wait { fill: var(--bad-fill); stroke: none; }
+.alt-frame { fill: none; stroke: var(--box-stroke); stroke-width: 1; stroke-dasharray: 4 3; }
+.alt-divider { stroke: var(--box-stroke); stroke-width: 1; stroke-dasharray: 4 3; }
+.label-alt { font-size: 9px; font-style: italic; fill: var(--muted); }
+.ping { fill: var(--accent); }
+@keyframes seq-ping-poll-console { from { cx: 160.00; } to { cx: 765.00; } }
+#seq-ping-poll-console { animation: seq-ping-poll-console 3.99s ease-in-out infinite alternate; }
+@keyframes seq-ping-poll-boot { from { cx: 160.00; } to { cx: 765.00; } }
+#seq-ping-poll-boot { animation: seq-ping-poll-boot 3.99s ease-in-out infinite alternate; }
+</style>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+</marker>
+</defs>
+<g id="step-lane-header-abgal">
+<rect class="box box-instant" x="30.00" y="30.00" width="260.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="160.00" y="58.00" text-anchor="middle">abgal start</text>
+</g>
+<g id="step-lane-header-kernel">
+<rect class="box box-instant" x="340.00" y="30.00" width="130.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="405.00" y="58.00" text-anchor="middle">kernel</text>
+</g>
+<g id="step-lane-header-emulator">
+<rect class="box box-instant" x="520.00" y="30.00" width="130.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="585.00" y="58.00" text-anchor="middle">emulator</text>
+</g>
+<g id="step-lane-header-adb">
+<rect class="box box-instant" x="700.00" y="30.00" width="130.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="765.00" y="58.00" text-anchor="middle">adb</text>
+</g>
+<g id="step-lane-header-watch">
+<rect class="box box-instant" x="880.00" y="30.00" width="130.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="945.00" y="58.00" text-anchor="middle">temperature watch</text>
+</g>
+<line class="lane-rail" x1="160.00" y1="98.00" x2="160.00" y2="978.00"/>
+<line class="lane-rail" x1="405.00" y1="98.00" x2="405.00" y2="978.00"/>
+<line class="lane-rail" x1="585.00" y1="98.00" x2="585.00" y2="978.00"/>
+<line class="lane-rail" x1="765.00" y1="98.00" x2="765.00" y2="978.00"/>
+<line class="lane-rail" x1="945.00" y1="98.00" x2="945.00" y2="978.00"/>
+<line class="seq-edge-req" x1="160.00" y1="138.00" x2="405.00" y2="138.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="282.50" y="132.00" text-anchor="middle">1. preflight, refuse a running guest or too little memory</text>
+<line class="seq-edge-resp" x1="405.00" y1="160.00" x2="160.00" y2="160.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="282.50" y="154.00" text-anchor="middle">2. ok (instant)</text>
+<line class="seq-edge-req" x1="160.00" y1="186.00" x2="585.00" y2="186.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="372.50" y="180.00" text-anchor="middle">3. launch, detached, logs to emulator.log</text>
+<line class="seq-edge-resp" x1="585.00" y1="208.00" x2="160.00" y2="208.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="372.50" y="202.00" text-anchor="middle">4. launched (instant)</text>
+<rect class="seq-rect-poll" x="24.00" y="220.00" width="822.00" height="186.00" rx="6" ry="6"/>
+<text class="label-note" x="32.00" y="234.00">poll console, up to 300 s</text>
+<line class="seq-edge-poll" x1="160.00" y1="266.00" x2="765.00" y2="266.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="462.50" y="260.00" text-anchor="middle">5. who is this, every 2 s</text>
+<circle id="seq-ping-poll-console" class="ping" cx="160.00" cy="266.00" r="3.5"/>
+<rect class="alt-frame" x="24.00" y="288.00" width="822.00" height="104.00" rx="4" ry="4"/>
+<line class="alt-divider" x1="24.00" y1="346.00" x2="846.00" y2="346.00"/>
+<text class="label-alt" x="30.00" y="304.00">[no answer in time]</text>
+<text class="label-alt" x="30.00" y="362.00">[console answered]</text>
+<path class="seq-edge-fail" d="M 170.00 318.00 C 214.00 318.00, 214.00 334.00, 170.00 334.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="222.00" y="322.00">6. did not come up. Last log lines are printed.</text>
+<line class="seq-edge-resp" x1="765.00" y1="376.00" x2="160.00" y2="376.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="462.50" y="370.00" text-anchor="middle">7. answered</text>
+<line class="seq-edge-req" x1="160.00" y1="432.00" x2="945.00" y2="432.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="552.50" y="426.00" text-anchor="middle">8. start abgal watch as a subprocess</text>
+<line class="seq-edge-resp" x1="945.00" y1="454.00" x2="160.00" y2="454.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="552.50" y="448.00" text-anchor="middle">9. started (instant)</text>
+<rect class="seq-rect-wait" x="30.00" y="466.00" width="260.00" height="80.00" rx="6" ry="6"/>
+<text class="label-note" x="38.00" y="480.00">wait settle, fixed 2 s, then</text>
+<text class="label-note" x="38.00" y="492.00">abgal checks its own child</text>
+<text class="label-note" x="38.00" y="504.00">process</text>
+<rect class="bar-track" x="50.00" y="508.00" width="220.00" height="6.00" rx="3" ry="3"/>
+<rect id="bar-fill-wait-settle" class="bar-fill" x="50.00" y="508.00" width="0" height="6.00" rx="3" ry="3"/>
+<text class="label-duration" x="160.00" y="528.00" text-anchor="middle">2 s</text>
+<rect class="alt-frame" x="24.00" y="562.00" width="822.00" height="104.00" rx="4" ry="4"/>
+<line class="alt-divider" x1="24.00" y1="620.00" x2="846.00" y2="620.00"/>
+<text class="label-alt" x="30.00" y="578.00">[watch died at once]</text>
+<text class="label-alt" x="30.00" y="636.00">[watch still alive]</text>
+<path class="seq-edge-fail" d="M 170.00 592.00 C 214.00 592.00, 214.00 608.00, 170.00 608.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="222.00" y="596.00">10. watch died at once. Guest keeps running without it.</text>
+<text class="label-note" x="170.00" y="654.00">alive</text>
+<rect class="seq-rect-poll" x="24.00" y="678.00" width="822.00" height="186.00" rx="6" ry="6"/>
+<text class="label-note" x="32.00" y="692.00">poll boot, up to 300 s</text>
+<line class="seq-edge-poll" x1="160.00" y1="724.00" x2="765.00" y2="724.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="462.50" y="718.00" text-anchor="middle">11. boot_completed, every 3 s</text>
+<circle id="seq-ping-poll-boot" class="ping" cx="160.00" cy="724.00" r="3.5"/>
+<rect class="alt-frame" x="24.00" y="746.00" width="822.00" height="104.00" rx="4" ry="4"/>
+<line class="alt-divider" x1="24.00" y1="804.00" x2="846.00" y2="804.00"/>
+<text class="label-alt" x="30.00" y="762.00">[not booted in time]</text>
+<text class="label-alt" x="30.00" y="820.00">[booted in time]</text>
+<path class="seq-edge-fail" d="M 170.00 776.00 C 214.00 776.00, 214.00 792.00, 170.00 792.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="222.00" y="780.00">12. did not report a completed boot in --timeout s.</text>
+<line class="seq-edge-resp" x1="765.00" y1="834.00" x2="160.00" y2="834.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="462.50" y="828.00" text-anchor="middle">13. booted</text>
+<g id="step-ready">
+<rect class="box box-terminal box-ok" x="30.00" y="890.00" width="980.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-actor" x="520.00" y="904.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="520.00" y="918.00" text-anchor="middle">ready</text>
+</g>
+</svg>
