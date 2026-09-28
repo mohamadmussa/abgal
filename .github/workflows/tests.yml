@@ -1,7 +1,9 @@
 # The tests on their own, one line per folder so a failure names its kind.
 # unit and integration need neither adb nor KVM and run on every hosted
-# runner. e2e needs a real guest and gets its own job on a self hosted runner
-# once that exists, until then pytest skips it here.
+# runner. Most of e2e still needs a real guest and stays skipped here. The
+# github-runner container test only needs docker or podman and gh, so it
+# gets its own job on the self hosted runner, after a push to main so a
+# stranger's pull request never reaches this machine.
 name: tests
 
 on:
@@ -33,3 +35,32 @@ jobs:
       # skipped, with the reason. A collection error still fails here.
       - name: e2e tests are skipped without ABGAL_E2E
         run: .venv/bin/pytest -q -rs tests/e2e
+
+  github-runner-container-e2e:
+    if: github.event_name == 'push'
+    needs: tests
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require the runner repo variable and the gh token secret
+        run: |
+          missing=""
+          [ -z "${{ vars.ABGAL_E2E_RUNNER_REPO }}" ] && missing="$missing ABGAL_E2E_RUNNER_REPO"
+          [ -z "${{ secrets.ABGAL_GH_TOKEN }}" ] && missing="$missing ABGAL_GH_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "Missing, set as a repository variable or secret:$missing" >&2
+            exit 1
+          fi
+
+      - name: Install pytest
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r requirements-dev.txt
+
+      - name: github-runner container e2e test
+        env:
+          ABGAL_E2E: "1"
+          ABGAL_E2E_RUNNER_REPO: ${{ vars.ABGAL_E2E_RUNNER_REPO }}
+          GH_TOKEN: ${{ secrets.ABGAL_GH_TOKEN }}
+        run: .venv/bin/pytest -q tests/e2e/test_github_runner_container.py
