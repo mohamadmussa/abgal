@@ -33,6 +33,11 @@ logs/
 # a published deny list would publish the very values it protects.
 .private-words
 
+# Tools fetched for this checkout, such as the pinned shellcheck the workflow
+# also uses. They are binaries and they belong to the machine, but they stay
+# under the project so that they are findable months later.
+tools/local/
+
 # Python bytecode.
 __pycache__/
 *.pyc
