@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 530.00 404.00" width="530.00" height="404.00" role="img" aria-label="Wiring abgal start uses">
+<style>
+:root {
+  --bg: #1b1b1f;
+  --fg: #e9e9ee;
+  --muted: #a3a3ad;
+  --box-fill: #2a2a30;
+  --box-stroke: #c7c7d1;
+  --decision-fill: #26283a;
+  --track: #3c3c44;
+  --accent: #7ea2ff;
+  --ok-fill: #173524;
+  --ok-stroke: #4ade80;
+  --bad-fill: #3a1c1c;
+  --bad-stroke: #f87171;
+  --arrow: #c7c7d1;
+}
+svg { background: var(--bg); }
+text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
+.label-actor { font-size: 9px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.label-main { font-size: 11.5px; }
+.label-duration { font-size: 10px; font-style: italic; fill: var(--muted); }
+.label-edge { font-size: 10px; fill: var(--muted); }
+.label-note { font-size: 10px; font-style: italic; fill: var(--muted); }
+.box, .box-instant, .box-action { fill: var(--box-fill); stroke: var(--box-stroke); stroke-width: 1.5; }
+.box-decision { fill: var(--decision-fill); stroke: var(--box-stroke); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.box-ok { fill: var(--ok-fill); stroke: var(--ok-stroke); stroke-width: 2; }
+.box-bad { fill: var(--bad-fill); stroke: var(--bad-stroke); stroke-width: 2; }
+.bar-track { fill: var(--track); }
+.bar-fill { fill: var(--accent); }
+.edge { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+.arrowhead { fill: var(--arrow); }
+@keyframes bar-fill { from { width: 0; } to { width: 220.00px; } }
+#bar-fill-poll-console { animation: bar-fill 3.99s linear infinite; }
+#bar-fill-wait-settle { animation: bar-fill 0.40s linear infinite; }
+#bar-fill-poll-boot { animation: bar-fill 3.99s linear infinite; }
+</style>
+<style>
+.wire-dot-flash, .wire-dot-pulse { fill: var(--accent); opacity: 0; }
+@keyframes flash-preflight { 0% { opacity: 0; } 0.75% { opacity: 1; } 2.50% { opacity: 0; } 100% { opacity: 0; } }
+#dot-preflight { animation: flash-preflight 8.00s linear infinite; animation-delay: 0.00s; }
+@keyframes flash-launch { 0% { opacity: 0; } 0.75% { opacity: 1; } 2.50% { opacity: 0; } 100% { opacity: 0; } }
+#dot-launch { animation: flash-launch 8.00s linear infinite; animation-delay: 0.20s; }
+@keyframes pulse-poll-console { 0% { opacity: 0; } 9.97% { opacity: 1; } 39.87% { opacity: 1; } 49.83% { opacity: 0; } 100% { opacity: 0; } }
+#dot-poll-console { animation: pulse-poll-console 8.00s ease-in-out infinite; animation-delay: 0.40s; }
+@keyframes flash-start-watch { 0% { opacity: 0; } 0.75% { opacity: 1; } 2.50% { opacity: 0; } 100% { opacity: 0; } }
+#dot-start-watch { animation: flash-start-watch 8.00s linear infinite; animation-delay: 4.59s; }
+@keyframes pulse-wait-settle { 0% { opacity: 0; } 1.00% { opacity: 1; } 4.00% { opacity: 1; } 5.00% { opacity: 0; } 100% { opacity: 0; } }
+#dot-wait-settle { animation: pulse-wait-settle 8.00s ease-in-out infinite; animation-delay: 4.79s; }
+@keyframes pulse-poll-boot { 0% { opacity: 0; } 9.97% { opacity: 1; } 39.87% { opacity: 1; } 49.83% { opacity: 0; } 100% { opacity: 0; } }
+#dot-poll-boot { animation: pulse-poll-boot 8.00s ease-in-out infinite; animation-delay: 5.39s; }
+</style>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+</marker>
+</defs>
+<g id="step-circuit-abgal">
+<rect class="box box-instant" x="155.00" y="168.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="265.00" y="196.00" text-anchor="middle">abgal start</text>
+</g>
+<g id="step-circuit-kernel">
+<rect class="box box-instant" x="30.00" y="30.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="140.00" y="58.00" text-anchor="middle">kernel</text>
+</g>
+<g id="step-circuit-emulator">
+<rect class="box box-instant" x="280.00" y="30.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="390.00" y="58.00" text-anchor="middle">emulator</text>
+</g>
+<g id="step-circuit-adb">
+<rect class="box box-instant" x="30.00" y="306.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="140.00" y="334.00" text-anchor="middle">adb</text>
+</g>
+<g id="step-circuit-watch">
+<rect class="box box-instant" x="280.00" y="306.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="390.00" y="334.00" text-anchor="middle">temperature watch</text>
+</g>
+<line class="edge" x1="265.00" y1="168.00" x2="140.00" y2="98.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="265.00" y1="168.00" x2="390.00" y2="98.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="265.00" y1="236.00" x2="140.00" y2="306.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="265.00" y1="236.00" x2="390.00" y2="306.00" marker-end="url(#arrow)"/>
+<circle id="dot-preflight" class="wire-dot-flash" cx="202.50" cy="133.00" r="4.00"/>
+<circle id="dot-launch" class="wire-dot-flash" cx="327.50" cy="133.00" r="4.00"/>
+<circle id="dot-poll-console" class="wire-dot-pulse" cx="223.33" cy="259.33" r="6.00"/>
+<circle id="dot-start-watch" class="wire-dot-flash" cx="306.67" cy="259.33" r="4.00"/>
+<circle id="dot-wait-settle" class="wire-dot-pulse" cx="348.33" cy="282.67" r="6.00"/>
+<circle id="dot-poll-boot" class="wire-dot-pulse" cx="181.67" cy="282.67" r="6.00"/>
+</svg>

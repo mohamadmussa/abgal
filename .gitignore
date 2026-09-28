@@ -21,8 +21,10 @@ apk/*
 # not of this project, so it stays on the machine that does the testing.
 app.conf
 
-# German working copies. The published language is English.
+# German working copies. The published language is English, except this one
+# committed mirror.
 *.de.md
+!docs/architecture.de.md
 
 # Local files and folders of any kind.
 *.local.*

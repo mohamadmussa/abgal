@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300.00 332.00" width="1300.00" height="332.00" role="img" aria-label="How abgal start fills the 16 emulator ports">
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #5b5b63;
+  --box-fill: #f4f4f6;
+  --box-stroke: #33333d;
+  --decision-fill: #eef1fb;
+  --track: #dcdce2;
+  --accent: #2f5fd6;
+  --ok-fill: #e8f7ee;
+  --ok-stroke: #1a7f37;
+  --bad-fill: #fbeaea;
+  --bad-stroke: #b42318;
+  --arrow: #33333d;
+}
+svg { background: var(--bg); }
+text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
+.label-actor { font-size: 9px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.label-main { font-size: 11.5px; }
+.label-duration { font-size: 10px; font-style: italic; fill: var(--muted); }
+.label-edge { font-size: 10px; fill: var(--muted); }
+.label-note { font-size: 10px; font-style: italic; fill: var(--muted); }
+.box, .box-instant, .box-action { fill: var(--box-fill); stroke: var(--box-stroke); stroke-width: 1.5; }
+.box-decision { fill: var(--decision-fill); stroke: var(--box-stroke); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.box-ok { fill: var(--ok-fill); stroke: var(--ok-stroke); stroke-width: 2; }
+.box-bad { fill: var(--bad-fill); stroke: var(--bad-stroke); stroke-width: 2; }
+.bar-track { fill: var(--track); }
+.bar-fill { fill: var(--accent); }
+.edge { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+.arrowhead { fill: var(--arrow); }
+@keyframes bar-fill { from { width: 0; } to { width: 220.00px; } }
+</style>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+</marker>
+</defs>
+<text class="label-main" x="650.00" y="44.00" text-anchor="middle">abgal --port: 16 slots, 5554 to 5584, even only. Outside that, adb cannot find the guest.</text>
+<text class="label-note" x="650.00" y="60.00" text-anchor="middle">Illustrative fill sequence below, not a measured run. Which ports are actually busy is runtime state; abgal does not track it.</text>
+<g id="step-slot-5554">
+<rect class="box box-instant" x="30.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="65.00" y="104.00" text-anchor="middle">5554</text>
+</g>
+<g id="step-slot-5556">
+<rect class="box box-instant" x="108.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="143.00" y="104.00" text-anchor="middle">5556</text>
+</g>
+<g id="step-slot-5558">
+<rect class="box box-instant" x="186.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="221.00" y="104.00" text-anchor="middle">5558</text>
+</g>
+<g id="step-slot-5560">
+<rect class="box box-instant" x="264.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="299.00" y="104.00" text-anchor="middle">5560</text>
+</g>
+<g id="step-slot-5562">
+<rect class="box box-instant" x="342.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="377.00" y="104.00" text-anchor="middle">5562</text>
+</g>
+<g id="step-slot-5564">
+<rect class="box box-instant" x="420.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="455.00" y="104.00" text-anchor="middle">5564</text>
+</g>
+<g id="step-slot-5566">
+<rect class="box box-instant" x="498.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="533.00" y="104.00" text-anchor="middle">5566</text>
+</g>
+<g id="step-slot-5568">
+<rect class="box box-instant" x="576.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="611.00" y="104.00" text-anchor="middle">5568</text>
+</g>
+<g id="step-slot-5570">
+<rect class="box box-instant" x="654.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="689.00" y="104.00" text-anchor="middle">5570</text>
+</g>
+<g id="step-slot-5572">
+<rect class="box box-instant" x="732.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="767.00" y="104.00" text-anchor="middle">5572</text>
+</g>
+<g id="step-slot-5574">
+<rect class="box box-instant" x="810.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="845.00" y="104.00" text-anchor="middle">5574</text>
+</g>
+<g id="step-slot-5576">
+<rect class="box box-instant" x="888.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="923.00" y="104.00" text-anchor="middle">5576</text>
+</g>
+<g id="step-slot-5578">
+<rect class="box box-instant" x="966.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="1001.00" y="104.00" text-anchor="middle">5578</text>
+</g>
+<g id="step-slot-5580">
+<rect class="box box-instant" x="1044.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="1079.00" y="104.00" text-anchor="middle">5580</text>
+</g>
+<g id="step-slot-5582">
+<rect class="box box-instant" x="1122.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="1157.00" y="104.00" text-anchor="middle">5582</text>
+</g>
+<g id="step-slot-5584">
+<rect class="box box-instant" x="1200.00" y="76.00" width="70.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="1235.00" y="104.00" text-anchor="middle">5584</text>
+</g>
+<g id="step-guest-auto-1">
+<rect class="box box-instant" x="90.00" y="234.00" width="200.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="190.00" y="262.00" text-anchor="middle">guest (example): auto</text>
+<text class="label-main" x="190.00" y="274.00" text-anchor="middle">picks the first free slot</text>
+</g>
+<g id="step-guest-explicit">
+<rect class="box box-instant" x="320.00" y="234.00" width="200.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="420.00" y="262.00" text-anchor="middle">guest (example): --port</text>
+<text class="label-main" x="420.00" y="274.00" text-anchor="middle">5584 claims it directly</text>
+</g>
+<g id="step-guest-auto-2">
+<rect class="box box-instant" x="550.00" y="234.00" width="200.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="650.00" y="262.00" text-anchor="middle">guest (example): auto</text>
+<text class="label-main" x="650.00" y="274.00" text-anchor="middle">picks the first free slot</text>
+</g>
+<g id="step-guest-auto-3">
+<rect class="box box-instant" x="780.00" y="234.00" width="200.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-main" x="880.00" y="262.00" text-anchor="middle">guest (example): automatic</text>
+<text class="label-main" x="880.00" y="274.00" text-anchor="middle">port, nothing free left</text>
+</g>
+<g id="step-dead-end">
+<rect class="box box-terminal box-bad" x="1010.00" y="234.00" width="200.00" height="68.00" rx="34.00" ry="34.00"/>
+<text class="label-main" x="1110.00" y="262.00" text-anchor="middle">no free port. No code</text>
+<text class="label-main" x="1110.00" y="274.00" text-anchor="middle">here; a generic failure.</text>
+</g>
+<text class="label-note" x="533.00" y="189.00" text-anchor="middle">13 more, already running (example)</text>
+<line class="edge" x1="190.00" y1="234.00" x2="1079.00" y2="144.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="420.00" y1="234.00" x2="1235.00" y2="144.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="650.00" y1="234.00" x2="1157.00" y2="144.00" marker-end="url(#arrow)"/>
+<line class="edge" x1="980.00" y1="268.00" x2="1010.00" y2="268.00" marker-end="url(#arrow)"/>
+</svg>

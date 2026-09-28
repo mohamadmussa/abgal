@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300.00 404.00" width="1300.00" height="404.00" role="img" aria-label="The pieces of AbGal and how they relate">
+<style>
+:root {
+  --bg: #1b1b1f;
+  --fg: #e9e9ee;
+  --muted: #a3a3ad;
+  --box-fill: #2a2a30;
+  --box-stroke: #c7c7d1;
+  --decision-fill: #26283a;
+  --track: #3c3c44;
+  --accent: #7ea2ff;
+  --ok-fill: #173524;
+  --ok-stroke: #4ade80;
+  --bad-fill: #3a1c1c;
+  --bad-stroke: #f87171;
+  --arrow: #c7c7d1;
+}
+svg { background: var(--bg); }
+text { font-family: Helvetica, Arial, sans-serif; fill: var(--fg); }
+.label-actor { font-size: 9px; fill: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.label-main { font-size: 11.5px; }
+.label-duration { font-size: 10px; font-style: italic; fill: var(--muted); }
+.label-edge { font-size: 10px; fill: var(--muted); }
+.label-note { font-size: 10px; font-style: italic; fill: var(--muted); }
+.box, .box-instant, .box-action { fill: var(--box-fill); stroke: var(--box-stroke); stroke-width: 1.5; }
+.box-decision { fill: var(--decision-fill); stroke: var(--box-stroke); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.box-ok { fill: var(--ok-fill); stroke: var(--ok-stroke); stroke-width: 2; }
+.box-bad { fill: var(--bad-fill); stroke: var(--bad-stroke); stroke-width: 2; }
+.bar-track { fill: var(--track); }
+.bar-fill { fill: var(--accent); }
+.edge { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+.arrowhead { fill: var(--arrow); }
+@keyframes bar-fill { from { width: 0; } to { width: 220.00px; } }
+</style>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+</marker>
+</defs>
+<g id="step-abgal">
+<rect class="box box-instant" x="405.00" y="168.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="515.00" y="182.00" text-anchor="middle">abgal</text>
+<text class="label-main" x="515.00" y="196.00" text-anchor="middle">one file, standard library</text>
+<text class="label-main" x="515.00" y="208.00" text-anchor="middle">only. Every command.</text>
+</g>
+<g id="step-devices-conf">
+<rect class="box box-instant" x="155.00" y="30.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="265.00" y="44.00" text-anchor="middle">devices.conf</text>
+<text class="label-main" x="265.00" y="58.00" text-anchor="middle">text, one line per template.</text>
+<text class="label-main" x="265.00" y="70.00" text-anchor="middle">What a guest is made from.</text>
+</g>
+<g id="step-versions-conf">
+<rect class="box box-instant" x="405.00" y="30.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="515.00" y="44.00" text-anchor="middle">versions.conf</text>
+<text class="label-main" x="515.00" y="58.00" text-anchor="middle">text, one line per SDK part.</text>
+<text class="label-main" x="515.00" y="70.00" text-anchor="middle">What setup fetches.</text>
+</g>
+<g id="step-devices-xml">
+<rect class="box box-instant" x="655.00" y="30.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="765.00" y="44.00" text-anchor="middle">devices.xml</text>
+<text class="label-main" x="765.00" y="58.00" text-anchor="middle">XML, the screens the</text>
+<text class="label-main" x="765.00" y="70.00" text-anchor="middle">templates refer to.</text>
+</g>
+<g id="step-avd">
+<rect class="box box-instant" x="30.00" y="306.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="140.00" y="320.00" text-anchor="middle">avd/</text>
+<text class="label-main" x="140.00" y="334.00" text-anchor="middle">config.ini, abgal-template,</text>
+<text class="label-main" x="140.00" y="346.00" text-anchor="middle">abgal-id, per guest.</text>
+</g>
+<g id="step-logs">
+<rect class="box box-instant" x="280.00" y="306.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="390.00" y="320.00" text-anchor="middle">logs/</text>
+<text class="label-main" x="390.00" y="334.00" text-anchor="middle">emulator.log and watch.log,</text>
+<text class="label-main" x="390.00" y="346.00" text-anchor="middle">per guest.</text>
+</g>
+<g id="step-sdk">
+<rect class="box box-instant" x="530.00" y="306.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="640.00" y="320.00" text-anchor="middle">sdk/</text>
+<text class="label-main" x="640.00" y="334.00" text-anchor="middle">the Android SDK. Gitignored.</text>
+</g>
+<g id="step-android-home">
+<rect class="box box-instant" x="780.00" y="306.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="890.00" y="320.00" text-anchor="middle">android-home/</text>
+<text class="label-main" x="890.00" y="334.00" text-anchor="middle">user files of the SDK tools.</text>
+<text class="label-main" x="890.00" y="346.00" text-anchor="middle">Gitignored.</text>
+</g>
+<g id="step-bin-env">
+<rect class="box box-instant" x="1050.00" y="168.00" width="220.00" height="68.00" rx="8.00" ry="8.00"/>
+<text class="label-actor" x="1160.00" y="182.00" text-anchor="middle">bin/env.sh</text>
+<text class="label-main" x="1160.00" y="196.00" text-anchor="middle">bash, sourced for the SDK</text>
+<text class="label-main" x="1160.00" y="208.00" text-anchor="middle">paths in your own shell.</text>
+</g>
+<line class="edge" x1="515.00" y1="168.00" x2="265.00" y2="98.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="396.00" y="133.00" text-anchor="middle">reads</text>
+<line class="edge" x1="515.00" y1="168.00" x2="515.00" y2="98.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="521.00" y="133.00" text-anchor="middle">reads</text>
+<line class="edge" x1="515.00" y1="168.00" x2="765.00" y2="98.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="646.00" y="133.00" text-anchor="middle">links</text>
+<line class="edge" x1="515.00" y1="236.00" x2="140.00" y2="306.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="333.50" y="271.00" text-anchor="middle">creates</text>
+<line class="edge" x1="515.00" y1="236.00" x2="390.00" y2="306.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="458.50" y="271.00" text-anchor="middle">writes</text>
+<line class="edge" x1="515.00" y1="236.00" x2="640.00" y2="306.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="583.50" y="271.00" text-anchor="middle">fetches into</text>
+<line class="edge" x1="515.00" y1="236.00" x2="890.00" y2="306.00" marker-end="url(#arrow)"/>
+<text class="label-edge" x="708.50" y="271.00" text-anchor="middle">fetches into</text>
+<text class="label-note" x="1160.00" y="252.00" text-anchor="middle">not read by abgal</text>
+</svg>
