@@ -119,6 +119,8 @@ Run from the clone as `./abgal`, or put the clone on your `PATH`.
 | `abgal status` | What is on disk, what is running, and how much memory is left |
 | `abgal stop -n <guest>` | Stops a guest, orderly first, by signal after `--grace` seconds |
 | `abgal delete -n <guest>` | Deletes a guest and its disk, after asking |
+| `abgal shutdown` | Stops every running guest and its temperature watch, every disk stays in place |
+| `abgal shutdown --DELETE` | Also deletes every guest, after a typed confirmation |
 | `abgal watch -n <guest>` | The temperature watch. `start` runs it by itself, so it is only called by hand after `--no-watch` |
 
 Every command takes `--help`. A guest can be named by its name or by its

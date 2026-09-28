@@ -121,6 +121,8 @@ Aus dem Klon als `./abgal` aufrufen, oder den Klon in den `PATH` legen.
 | `abgal status` | Was auf der Platte liegt, was läuft und wie viel Speicher frei ist |
 | `abgal stop -n <guest>` | Stoppt ein AVD, erst geordnet, nach `--grace` Sekunden per Signal |
 | `abgal delete -n <guest>` | Löscht ein AVD samt Platte, nach Rückfrage |
+| `abgal shutdown` | Stoppt jedes laufende AVD und dessen Temperaturwache, jede Platte bleibt erhalten |
+| `abgal shutdown --DELETE` | Löscht zusätzlich jedes AVD, nach getippter Bestätigung |
 | `abgal watch -n <guest>` | Die Temperaturwache. `start` startet sie selbst, von Hand also nur nach `--no-watch` |
 
 Jeder Befehl kennt `--help`. Ein AVD lässt sich über seinen Namen oder über
