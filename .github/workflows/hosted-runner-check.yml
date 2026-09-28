@@ -44,7 +44,7 @@ jobs:
 
       - name: Create the smallest guest
         id: create
-        run: python3 abgal create phone-1080x2400-480-api35-x86_64 --as ci --yes
+        run: python3 abgal create phone-1080x2400-480-api35-x86_64 --as ci
         continue-on-error: true
 
       - name: Start the guest
