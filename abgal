@@ -1205,6 +1205,27 @@ def confirm_delete_all(names):
     return answer.strip() == str(a + b)
 
 
+def signal_watches(pending, number):
+    for pid in pending:
+        try:
+            os.kill(pid, number)
+        except OSError:
+            pass
+
+
+def surviving_watches(pending):
+    return {pid for pid in pending if (PROC / str(pid)).exists()}
+
+
+def wait_for_watches(pending, grace):
+    deadline = time.time() + grace
+    while pending and time.time() < deadline:
+        pending = surviving_watches(pending)
+        if pending:
+            time.sleep(1)
+    return surviving_watches(pending)
+
+
 def stop_watches(grace, say=print):
     """Ends every detached 'abgal watch' process still running.
 
@@ -1219,18 +1240,8 @@ def stop_watches(grace, say=print):
     say("Stopping %d temperature watch(es)." % len(pending))
 
     for number in (signal.SIGTERM, signal.SIGKILL):
-        for pid in pending:
-            try:
-                os.kill(pid, number)
-            except OSError:
-                pass
-
-        deadline = time.time() + grace
-        while pending and time.time() < deadline:
-            pending = {pid for pid in pending if (PROC / str(pid)).exists()}
-            if pending:
-                time.sleep(1)
-        pending = {pid for pid in pending if (PROC / str(pid)).exists()}
+        signal_watches(pending, number)
+        pending = wait_for_watches(pending, grace)
         if not pending:
             return True
 

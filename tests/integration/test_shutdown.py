@@ -67,6 +67,32 @@ def test_shutdown_without_delete_leaves_guests_on_disk(two_guests, no_signals):
     assert abgal.guest_folder("tablet").is_dir()
 
 
+@pytest.fixture
+def stubborn_guest(tmp_path, fake_proc, fake_adb, monkeypatch):
+    """One guest whose console kill is ignored, so it never stops."""
+    monkeypatch.setattr(abgal, "AVD", tmp_path / "avd")
+    (tmp_path / "avd" / "pixel.avd").mkdir(parents=True)
+    fake_proc.add_emulator(4100, "pixel")
+    fake_adb.attach("emulator-5554", "pixel", pid=4100, stubborn=True)
+    return tmp_path / "avd"
+
+
+def test_shutdown_fails_when_a_guest_does_not_stop(stubborn_guest, no_signals, capsys):
+    with pytest.raises(SystemExit):
+        abgal.cmd_shutdown(args())
+
+    assert "not every guest stopped" in capsys.readouterr().err
+    assert abgal.running_pid("pixel") is not None
+
+
+def test_delete_refuses_after_a_guest_fails_to_stop(stubborn_guest, no_signals, fake_avdmanager):
+    with pytest.raises(SystemExit):
+        abgal.cmd_shutdown(args(DELETE=True))
+
+    assert fake_avdmanager == []
+    assert abgal.guest_folder("pixel").is_dir()
+
+
 def test_shutdown_reports_when_nothing_is_running(tmp_path, fake_proc, monkeypatch, capsys):
     monkeypatch.setattr(abgal, "AVD", tmp_path / "avd")
 
