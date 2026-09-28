@@ -95,27 +95,30 @@ def fail(message):
     sys.exit(2)
 
 
+def parse_deny_line(n, line):
+    """One 'label = regex' line of .private-words, or None for blank or comment."""
+    line = line.split("#", 1)[0].strip()
+    if not line:
+        return None
+    if "=" not in line:
+        fail("%s line %d: expected 'label = regex'" % (WORDS, n))
+    label, expr = (s.strip() for s in line.split("=", 1))
+    try:
+        return label, re.compile(expr.encode(), re.IGNORECASE)
+    except re.error as err:
+        fail("%s line %d: %s" % (WORDS, n, err))
+
+
 def load_extra():
     """Read the local deny list. Absent is allowed, empty is not a finding."""
-    out = []
     if not os.path.exists(WORDS):
-        return out
+        return []
     try:
         with open(WORDS, encoding="utf-8") as fh:
-            for n, line in enumerate(fh, 1):
-                line = line.split("#", 1)[0].strip()
-                if not line:
-                    continue
-                if "=" not in line:
-                    fail("%s line %d: expected 'label = regex'" % (WORDS, n))
-                label, expr = (s.strip() for s in line.split("=", 1))
-                try:
-                    out.append((label, re.compile(expr.encode(), re.IGNORECASE)))
-                except re.error as err:
-                    fail("%s line %d: %s" % (WORDS, n, err))
+            parsed = (parse_deny_line(n, line) for n, line in enumerate(fh, 1))
+            return [entry for entry in parsed if entry]
     except OSError as err:
         fail("%s: %s" % (WORDS, err))
-    return out
 
 
 def in_repo():
@@ -151,22 +154,83 @@ def tracked():
                 yield path, fh.read()
 
 
+def skip_dir(base, name):
+    return (name in SKIP_DIRS or name.endswith(".local")
+            or os.path.relpath(os.path.join(base, name), ROOT) in SKIP_PATHS)
+
+
+def skip_file(rel, name):
+    return name.endswith(SKIP_SUFFIX) or SKIP_MARK in name or rel in SKIP_PATHS
+
+
+def files_in(base, files):
+    """One directory's own files, read and yielded, for on_disk's walk."""
+    for name in sorted(files):
+        full = os.path.join(base, name)
+        rel = os.path.relpath(full, ROOT)
+        if skip_file(rel, name):
+            continue
+        # A dangling symlink is not an error, there is simply nothing there
+        # to scan.
+        if not os.path.isfile(full):
+            continue
+        with open(full, "rb") as fh:
+            yield rel, fh.read()
+
+
 def on_disk():
     for base, dirs, files in os.walk(ROOT):
-        dirs[:] = [d for d in dirs
-                   if d not in SKIP_DIRS and not d.endswith(".local")
-                   and os.path.relpath(os.path.join(base, d), ROOT) not in SKIP_PATHS]
-        for name in sorted(files):
-            full = os.path.join(base, name)
-            rel = os.path.relpath(full, ROOT)
-            if name.endswith(SKIP_SUFFIX) or SKIP_MARK in name or rel in SKIP_PATHS:
-                continue
-            # A dangling symlink is not an error, there is simply nothing there
-            # to scan.
-            if not os.path.isfile(full):
-                continue
-            with open(full, "rb") as fh:
-                yield rel, fh.read()
+        dirs[:] = [d for d in dirs if not skip_dir(base, d)]
+        yield from files_in(base, files)
+
+
+def check_file(path, data, checks, findings):
+    for label, rx in checks:
+        # German prose in a committed mirror legitimately carries umlauts.
+        # Every other pattern still runs, a mirror can leak an address or a
+        # phone number exactly like any other file.
+        if label == UMLAUT_LABEL and path in UMLAUT_EXEMPT_PATHS:
+            continue
+        n = len(rx.findall(data))
+        if n:
+            findings.setdefault(label, {})[path] = n
+
+
+def scan(source, checks, me):
+    """Runs every check against every file the source yields.
+
+    Pulled out of main() so its own try sits at one level, not buried under
+    argument handling on one side and the report on the other.
+    """
+    findings = {}
+    scanned = skipped = 0
+    for path, data in source():
+        if path == me:
+            # The scanner describes the patterns it hunts, so it would always
+            # report itself. Everything else is scanned without exception.
+            continue
+        if b"\0" in data[:8192]:
+            skipped += 1
+            continue
+        scanned += 1
+        check_file(path, data, checks, findings)
+    return findings, scanned, skipped
+
+
+def print_hit_paths(hits):
+    for path, n in sorted(hits.items()):
+        print("      %-56s %d" % (path, n))
+
+
+def print_report(checks, findings):
+    total = 0
+    for label, _ in checks:
+        hits = findings.get(label, {})
+        count = sum(hits.values())
+        total += count
+        print("  %-34s %4d" % (label, count))
+        print_hit_paths(hits)
+    return total
 
 
 def main():
@@ -181,29 +245,10 @@ def main():
     source = {"--staged": staged, "--all": tracked, "--tree": on_disk}[mode]
 
     me = os.path.relpath(os.path.abspath(__file__), ROOT)
-    findings = {}
-    scanned = skipped = 0
     # A file that vanishes or turns unreadable mid walk is not a finding, it
     # is a reason the scan itself could not finish.
     try:
-        for path, data in source():
-            if path == me:
-                # The scanner describes the patterns it hunts, so it would always
-                # report itself. Everything else is scanned without exception.
-                continue
-            if b"\0" in data[:8192]:
-                skipped += 1
-                continue
-            scanned += 1
-            for label, rx in checks:
-                # German prose in a committed mirror legitimately carries
-                # umlauts. Every other pattern still runs, a mirror can leak
-                # an address or a phone number exactly like any other file.
-                if label == UMLAUT_LABEL and path in UMLAUT_EXEMPT_PATHS:
-                    continue
-                n = len(rx.findall(data))
-                if n:
-                    findings.setdefault(label, {})[path] = n
+        findings, scanned, skipped = scan(source, checks, me)
     except OSError as err:
         fail(str(err))
 
@@ -212,14 +257,7 @@ def main():
     if not os.path.exists(WORDS):
         print("No .private-words present, structural patterns only.")
     print()
-    total = 0
-    for label, _ in checks:
-        hits = findings.get(label, {})
-        count = sum(hits.values())
-        total += count
-        print("  %-34s %4d" % (label, count))
-        for path, n in sorted(hits.items()):
-            print("      %-56s %d" % (path, n))
+    total = print_report(checks, findings)
     print()
     if total:
         print("REFUSED: %d match(es). Nothing was committed." % total)
