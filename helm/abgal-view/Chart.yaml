@@ -1,0 +1,17 @@
+apiVersion: v2
+name: abgal-view
+description: Publishes the view of a headless Android emulator through the Traefik that k3s already runs.
+type: application
+
+# Version of the chart itself. It goes up when something here changes.
+version: 0.1.0
+
+# API level of the Android the emulator runs.
+appVersion: "35"
+
+keywords:
+  - android
+  - emulator
+  - traefik
+maintainers:
+  - name: mohamad.mussa

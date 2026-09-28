@@ -82,8 +82,8 @@ bis das AVD bereit war (23.09.2026). `status` zeigt es danach als live, dazu
 das Gerät, über das adb es erreicht hat:
 
 ```text
-NAME                   ID        STATE     DEVICE         ADB          TEMPLATE
-dev                    19c95791  live      emulator-5554  device       phone-1080x2400-480-api35-x86_64
+NAME                   ID        STATE     DEVICE         ADB          MEM    CPU    UPTIME    TEMPLATE
+dev                    19c95791  live      emulator-5554  device       612    3.2    00:00:12  phone-1080x2400-480-api35-x86_64
 
 Memory available: 9211 MB. A guest needs its own size plus about 900 MB.
 ```

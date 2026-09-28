@@ -139,6 +139,48 @@ def guest_rows():
     return guest_status()["guests"]
 
 
+def physical_devices(known_serials):
+    """Real hardware "adb devices" shows that abgal does not know about.
+
+    abgal's own attached() only recognizes serials starting with
+    "emulator-", see abgal, so a phone or tablet on USB or adb connect
+    never shows up in "abgal status --json". This asks adb directly and
+    keeps whatever is left once the known guest serials are excluded, in
+    the same row shape guest_rows() uses so the page can treat both
+    alike, with "physical": True marking the difference.
+    """
+    result = subprocess.run(
+        ["adb", "devices"], capture_output=True, timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.decode("utf-8", "replace").strip())
+    rows = []
+    for line in result.stdout.decode("utf-8", "replace").splitlines()[1:]:
+        line = line.strip()
+        if not line or "\t" not in line:
+            continue
+        serial, state = line.split("\t", 1)
+        if serial in known_serials:
+            continue
+        rows.append({
+            "name": serial, "id": None, "template": "physical device",
+            "pid": None, "serial": serial, "adb": state, "stats": None,
+            "physical": True,
+        })
+    return rows
+
+
+def safe_physical_devices(known_serials):
+    """physical_devices(), but a failed "adb devices" never takes the
+    guest list down with it, an empty list of physical rows does.
+    """
+    try:
+        return physical_devices(known_serials)
+    except Exception:
+        log.exception("physical_devices")
+        return []
+
+
 class GuestActionError(RuntimeError):
     """abgal refused or did not finish an action, the text is meant for the page."""
 
@@ -397,6 +439,7 @@ debugToggle.addEventListener("change", () => {
 });
 
 function pillState(g) {
+  if (g.physical) return g.adb === "device" ? "running" : "unknown";
   if (!g.pid) return "stopped";
   if (g.adb === "device") return "running";
   if (g.adb === "unauthorized") return "unknown";
@@ -442,7 +485,7 @@ function renderGuests(rows) {
     for (const [k, v] of [
       ["name", g.name],
       ["template", g.template],
-      ["id", g.id],
+      ["id", g.id ?? "-"],
       ["adb", g.adb ?? "-"],
       ["memory", g.stats ? g.stats.mem_mb + " MB" : "-"],
       ["cpu", g.stats ? g.stats.cpu_percent + "%" : "-"],
@@ -455,7 +498,9 @@ function renderGuests(rows) {
     const actions = document.createElement("div");
     actions.className = "actions";
     const busy = pending.get(g.name);
-    if (busy) {
+    if (g.physical) {
+      // a physical device is not abgal's to start, stop or restart
+    } else if (busy) {
       const span = document.createElement("span");
       span.textContent = busy + "…";
       actions.appendChild(span);
@@ -772,9 +817,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(200, "text/html; charset=utf-8", page)
             if p == "guests":
                 payload = guest_status()
+                known = {g["serial"] for g in payload["guests"] if g["serial"]}
+                rows = payload["guests"] + safe_physical_devices(known)
                 return self.respond(200, "application/json", json.dumps({
                     "selected": self.server.selected,
-                    "guests": payload["guests"],
+                    "guests": rows,
                     "free_mb": payload["free_mb"],
                 }))
             if self.server.device is None:
@@ -874,12 +921,16 @@ class Handler(BaseHTTPRequestHandler):
     def switch_guest(self, name):
         """Points the server at a different guest's serial, or refuses.
 
-        Only a guest with a live serial, adb state "device", can be shown
+        Only a row with a live serial, adb state "device", can be shown
         and driven. A guest still booting or already stopped has nothing
-        for adb to talk to yet.
+        for adb to talk to yet. rows also holds physical devices, so one
+        of those can be switched to the same way, just never started,
+        stopped or restarted through it, abgal has no guest by that name.
         """
         try:
             rows = guest_rows()
+            known = {g["serial"] for g in rows if g["serial"]}
+            rows = rows + safe_physical_devices(known)
         except Exception:
             log.exception("switch_guest")
             return self.respond(500, "text/plain; charset=utf-8",

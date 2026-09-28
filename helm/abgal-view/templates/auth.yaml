@@ -1,0 +1,40 @@
+{{- $name := include "abgal-view.fullname" . -}}
+{{- if not .Values.auth.hash -}}
+{{- fail "auth.hash is empty. Run 'bash make-auth.sh' first, then apply.sh." -}}
+{{- end -}}
+# The login. Without it the view would be open to everyone on the network, and
+# binding the service to the cluster bridge would have been pointless.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}-credentials
+  labels:
+    {{- include "abgal-view.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  # Traefik expects htpasswd format, so "user:hash" per line.
+  users: {{ printf "%s:%s" .Values.auth.user .Values.auth.hash | quote }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $name }}-auth
+  labels:
+    {{- include "abgal-view.labels" . | nindent 4 }}
+spec:
+  basicAuth:
+    secret: {{ $name }}-credentials
+    realm: "AbGal"
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $name }}-path
+  labels:
+    {{- include "abgal-view.labels" . | nindent 4 }}
+spec:
+  # The path is stripped before the request reaches the host, so the service
+  # behind it need not know which path it is published under.
+  stripPrefix:
+    prefixes:
+      - {{ .Values.route.path | quote }}

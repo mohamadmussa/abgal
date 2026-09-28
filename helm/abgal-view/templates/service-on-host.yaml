@@ -1,0 +1,40 @@
+{{- $name := include "abgal-view.fullname" . -}}
+{{- if not .Values.host.address -}}
+{{- fail "host.address is empty. Copy host.example.yaml to host.local.yaml and fill it in." -}}
+{{- end -}}
+# A service without a selector. It does not point at pods but at a process on
+# the host. Without a selector Kubernetes creates no endpoints, which is why
+# the EndpointSlice below is written out by hand.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "abgal-view.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.host.port }}
+      targetPort: {{ .Values.host.port }}
+      protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "abgal-view.labels" . | nindent 4 }}
+    # This label is the link back to the service above. Get it wrong and the
+    # service stays without a target, and Traefik answers 502.
+    kubernetes.io/service-name: {{ $name }}
+addressType: IPv4
+ports:
+  - name: http
+    port: {{ .Values.host.port }}
+    protocol: TCP
+endpoints:
+  - addresses:
+      - {{ .Values.host.address | quote }}
+    conditions:
+      ready: true

@@ -1,0 +1,20 @@
+The view of the emulator is published.
+
+  Reachable on the local network at
+      http://{{ .Values.route.hostname }}{{ .Values.route.path }}/
+      https://{{ .Values.route.hostname }}{{ .Values.route.path }}/
+
+  User       {{ .Values.auth.user }}
+  Password   in auth.local.yaml, not here
+
+The https certificate is Traefik's built in default. The browser warns about
+it, and rightly so: nobody signed it. On a local network that is acceptable,
+facing the internet it would not be.
+
+Check that the route stands:
+
+  kubectl get ingressroute,svc,endpointslice -n {{ .Release.Namespace }}
+  curl -u {{ .Values.auth.user }} http://{{ .Values.route.hostname }}{{ .Values.route.path }}/
+
+The service behind it has to listen on {{ .Values.host.address }}:{{ .Values.host.port }}.
+If nothing listens there, Traefik answers 502, and that is the right answer.

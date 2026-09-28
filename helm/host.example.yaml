@@ -1,0 +1,29 @@
+# Template for host.local.yaml. Copy it, fill it in, never commit it.
+#
+#   cp host.example.yaml host.local.yaml
+#
+# These are the two values that belong to one machine. They are deliberately
+# kept out of values.yaml so the chart runs on any cluster and not only on the
+# one it was written on.
+
+host:
+  # Address of the bridge a pod reaches the host on, not the one on the LAN.
+  # That distinction is the whole point: a service bound here is reachable
+  # from the cluster and not from the local network.
+  #
+  #   ip -4 -brief addr show cni0
+  #
+  # On k3s the bridge is called cni0. Other clusters name it differently, then
+  # "ip -4 -brief addr" lists them all and the right one carries the pod network.
+  address: ""
+
+route:
+  # Name this machine resolves under inside its own network. Traefik matches it
+  # against the Host header of the request, so an address alone is not enough.
+  #
+  #   hostname -f
+  #
+  # The name has to resolve on the network as well. Check with:
+  #
+  #   getent hosts "$(hostname -f)"
+  hostname: ""
