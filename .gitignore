@@ -72,3 +72,7 @@ __pycache__/
 
 # Development virtual environment for pytest, see requirements-dev.txt.
 .venv/
+
+# The coding tool's local configuration directory: project instructions
+# and hooks. Local only, never tracked.
+.ide-local/
