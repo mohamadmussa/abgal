@@ -1,5 +1,7 @@
 # AbGal
 
+*[Auf Deutsch](README.de.md)*
+
 [![Build status](https://github.com/mohamadmussa/abgal/actions/workflows/checks.yml/badge.svg)](https://github.com/mohamadmussa/abgal/actions/workflows/checks.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
@@ -126,8 +128,9 @@ workings and every error message.
 ### Templates
 
 `devices.conf` holds one line per template, `devices.xml` describes the
-screens. Two templates ship with AbGal, both a phone screen of 1080 x 2400 at
-480 dpi on Android 15 (API 35). The comment at the top of `devices.conf` says
+screens. Six templates ship with AbGal, all a phone screen of 1080 x 2400 at
+480 dpi: API 35, 36 and 37 without a store, API 35 with the Play Store, and
+API 35 with 4096 or 5120 MB. The comment at the top of `devices.conf` says
 what each column means and how to add a template.
 
 ### How many guests fit
@@ -141,9 +144,10 @@ guest swaps and an app takes twice as long to start.
 
 - **Not a container.** Guests run as plain processes on the host. There is
   no image to build and no Docker daemon.
-- **Not a device farm.** There is no web interface and no remote access.
-  Watching a guest from a browser is planned in
-  [#20](https://github.com/mohamadmussa/abgal/issues/20).
+- **Not a device farm.** `view/view-service.py` shows the guests of one
+  machine in a browser and lets you tap, type, start and stop them, see
+  [View and control from a browser](docs/view-service.md). It listens on
+  loopback by default. There are no users, no queue and no second machine.
 - **Not a test runner.** AbGal gets guests ready. Maestro, Espresso, Appium or
   plain `adb` then do the testing.
 - **Not for physical devices.** It creates and runs emulators only.

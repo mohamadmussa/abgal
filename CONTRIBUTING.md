@@ -1,5 +1,7 @@
 # Contributing to AbGal
 
+*[Auf Deutsch](CONTRIBUTING.de.md)*
+
 AbGal is maintained by one person. That single fact explains every rule below.
 There is no team to absorb a surprise, no reviewer on standby, and no budget for
 untangling a change that arrived without warning. The rules are here so that
@@ -142,15 +144,24 @@ set, so it is safe on any machine. `tests/fakes/` holds `FakeAdb` and
 `tests/conftest.py` put them in place. A test that needs the real adb or a
 real emulator process belongs in `e2e/`.
 
-## Everything visible on GitHub is English
+## Everything visible on GitHub is English first
 
 Code, comments, file names, variable names, branch names, commit subjects, pull
 request titles and bodies, issue titles, label names. All English.
 
+A page of documentation may also have a German mirror, `X.de.md` next to
+`X.md`. The English page is written first and is the one that counts. A German
+page never exists on its own, a change to one side goes into the other in the
+same pull request, and each pair links to the other language in its first
+lines. `.gitignore` ignores every other `*.de.md`, and `tools/check-private.py`
+refuses umlauts outside a listed mirror, so a new mirror needs its own
+exception in both.
+
 This is not a style preference. Half of this project's local notes are in
 German, and the boundary between what stays local and what becomes public has to
 be a line somebody can check, not a judgement somebody has to make while tired.
-The line is: if GitHub can display it, it is English.
+The line is: if GitHub can display it, it is English, or it is the `.de.md`
+mirror of an English page that is.
 
 ## Nothing private, ever
 

@@ -215,7 +215,7 @@ cat logs/<guest>/watch.log
 ```
 
 Eine Zeile `ABORT at 96 C` heißt, die Wache hat es gestoppt, weil der
-Prozessor zu heiß wurde. [Wie es funktioniert](how-it-works.md#temperature-watch)
+Prozessor zu heiß wurde. [Wie es funktioniert](how-it-works.de.md#temperaturwache)
 nennt die Schwellen und wie man sie ändert. Ein AVD, das ohne eine solche Zeile
 stoppt, hat von selbst geendet. Sein letzter Start steht in
 `logs/<guest>/emulator.log`.

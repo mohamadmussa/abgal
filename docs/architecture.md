@@ -1,5 +1,7 @@
 # Architecture
 
+*[Auf Deutsch](architecture.de.md)*
+
 [README.md](../README.md) gets a guest from a fresh clone to a running
 emulator in four commands. [How it works](how-it-works.md) follows one guest
 through the file or function that does each step. Neither shows the whole

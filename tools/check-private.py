@@ -50,6 +50,8 @@ UMLAUT_EXEMPT_PATHS = {
     "docs/troubleshooting.de.md",
     "docs/dashboard-design.de.md",
     "docs/view-service.de.md",
+    "README.de.md",
+    "CONTRIBUTING.de.md",
 }
 
 # Structural patterns. These describe a shape, not a value, so the list is
