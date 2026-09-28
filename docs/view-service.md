@@ -24,7 +24,9 @@ browser. The service prints its own URL on startup.
 
 Three columns: a guest list on the left, the live screen in the middle, and
 a control panel on the right. Both side columns can be resized by dragging
-the thin bar next to them.
+the thin bar next to them. The left column itself splits into the guest
+list above and a DEBUG panel below, resized the same way along the bar
+between them.
 
 ### Guest list
 
@@ -71,10 +73,9 @@ SMALL, plus NOW for a single fetch outside the refresh loop. The top bar
 above the page shows the last frame's fetch time and the host's free
 memory.
 
-**KEYS** has one button each for BACK, HOME, APP_SWITCH, ENTER, DEL and
-TAB. The server also accepts SEARCH, VOLUME_UP and VOLUME_DOWN, but the
-page has no button for them yet. The whole set is fixed on purpose so the
-page cannot send POWER or SLEEP mid test.
+**KEYS** has one button each for BACK, HOME, APP_SWITCH, ENTER, DEL, TAB,
+SEARCH, VOLUME_UP and VOLUME_DOWN. The set is fixed on purpose so the page
+cannot send POWER or SLEEP mid test.
 
 **SWIPE** sends a swipe from the middle of the screen toward one edge.
 

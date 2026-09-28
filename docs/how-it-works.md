@@ -1,5 +1,7 @@
 # How it works
 
+*[Auf Deutsch](how-it-works.de.md)*
+
 This page follows one guest from the line in `devices.conf` to a stopped
 process, and names the file or function that does each step. Read it when a
 command did something you did not expect.
