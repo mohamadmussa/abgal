@@ -33,7 +33,11 @@ jobs:
       # kvm group, and a session opened before group membership changes does
       # not see it. This widens the device node instead, no reboot needed,
       # and is a no-op worth trying even where it may not be allowed to run.
+      # self-hosted already has working kvm access, and its sudo has no
+      # NOPASSWD rule and no terminal to answer one, so this step would only
+      # hang there, not skip cleanly.
       - name: Widen /dev/kvm
+        if: matrix.runner != 'self-hosted'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-abgal-kvm.rules
           sudo udevadm control --reload-rules
