@@ -1,6 +1,9 @@
 # Whether a GitHub-hosted runner can run AbGal at all, see #94 and #13.
-# Triggered by hand, one matrix leg per candidate runner. ubuntu-slim runs
-# unprivileged, so reaching /dev/kvm at all is itself part of the result.
+# Triggered by hand, one matrix leg per candidate runner. ubuntu-slim was
+# tried and dropped, its container has a fixed single CPU core, below what
+# the emulator requires, see #94 for the finding. No arm64 leg is listed,
+# the android CLI has no arm64 build upstream, a dead end tracked in #113,
+# not something this matrix needs to keep confirming.
 # The long run over sustained load from #94 is a separate, later workflow.
 name: hosted-runner-check
 
@@ -15,7 +18,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm, ubuntu-slim]
+        runner:
+          [
+            ubuntu-latest,
+            ubuntu-26.04,
+            self-hosted,
+          ]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
