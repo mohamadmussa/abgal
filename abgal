@@ -944,15 +944,18 @@ def start_one(args, name):
         command += ["-wipe-data"]
 
     # The kvm group can be in the group database without being in a session
-    # that logged in before it was granted. "sg kvm" bridges that gap without
-    # a fresh login.
-    try:
-        in_kvm = grp.getgrnam("kvm").gr_gid in os.getgroups()
-    except KeyError:
-        in_kvm = True
-    if not in_kvm:
-        print("Note: this session does not know the kvm group, starting via sg kvm.")
-        command = ["sg", "kvm", "-c", " ".join(shlex.quote(c) for c in command)]
+    # that logged in before it was granted. "sg kvm" bridges that gap, but
+    # only when direct access is actually missing, a hosted runner can widen
+    # /dev/kvm itself and make the bridge unnecessary and, without a
+    # terminal to answer its password prompt, broken.
+    if not os.access(Path("/dev/kvm"), os.R_OK | os.W_OK):
+        try:
+            in_kvm = grp.getgrnam("kvm").gr_gid in os.getgroups()
+        except KeyError:
+            in_kvm = True
+        if not in_kvm:
+            print("Note: this session does not know the kvm group, starting via sg kvm.")
+            command = ["sg", "kvm", "-c", " ".join(shlex.quote(c) for c in command)]
 
     folder = LOGS / name
     logfile = folder / "emulator.log"
