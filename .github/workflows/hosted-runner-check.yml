@@ -32,6 +32,14 @@ jobs:
           sudo udevadm trigger --name-match=kvm
         continue-on-error: true
 
+      # avdmanager, unlike the bundled Android CLI, is the classic tool and
+      # needs a system JAVA_HOME. A minimal runner may not ship one.
+      - name: Set up Java for avdmanager
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: abgal setup
         id: setup
         run: python3 abgal setup --accept-licenses
