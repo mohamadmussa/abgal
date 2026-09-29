@@ -492,7 +492,7 @@ def device_listed(device):
                           capture_output=True, text=True, env=sdk_env())
     if done.returncode != 0:
         problem("avdmanager list device failed, exit %d:\n%s" %
-                (done.returncode, done.stderr.strip()))
+                (done.returncode, (done.stderr + done.stdout).strip()))
     return '"%s"' % device in done.stdout
 
 
