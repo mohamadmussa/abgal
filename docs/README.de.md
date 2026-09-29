@@ -14,6 +14,7 @@ Schritten von einem frischen Klon zu einem laufenden Android Virtual Device
 | [Ansicht und Steuerung aus dem Browser](view-service.de.md) | du die Web-Oberfläche nutzen oder verstehen willst, wie sie heute funktioniert |
 | [Dashboard Design](dashboard-design.de.md) | du das Ziellayout der Web-Oberfläche kennen willst |
 | [GitHub Actions Runner](github-runner.de.md) | du einen selbst gehosteten Runner neben deinen AVDs willst |
+| [GitHub-gehostete Runner](hosted-runners.de.md) | du wissen willst, ob ein GitHub-gehosteter Runner AbGal überhaupt ausführen kann |
 
 ## Das Leben eines AVD
 

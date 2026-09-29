@@ -14,6 +14,7 @@ comes after.
 | [View and control from a browser](view-service.md) | you want to use or understand the web UI as it works today |
 | [Dashboard design](dashboard-design.md) | you want to know the web UI's target layout |
 | [GitHub Actions runners](github-runner.md) | you want a self hosted runner alongside your guests |
+| [GitHub-hosted runners](hosted-runners.md) | you want to know whether a GitHub-hosted runner can run AbGal at all |
 
 ## A guest's life
 
