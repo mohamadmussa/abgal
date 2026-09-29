@@ -581,6 +581,27 @@ def verify(config, row, guest):
     return True
 
 
+def fetch_system_image(image, images):
+    """Downloads a system image, retrying a transient connection drop.
+
+    Measured on 2026-09-29: a hosted CI runner's download failed once with
+    "Peer disconnected" and succeeded on the next attempt, nothing about the
+    image or the runner was actually wrong. The CLI ends with 0 even for a
+    package it does not know, so only the folder counts.
+    """
+    command = [ANDROID_CLI, "--no-metrics", "--sdk=%s" % SDK,
+               "sdk", "install", image]
+    attempts = 3
+    for attempt in range(attempts):
+        if run_tool(command, quiet=True) == 0 and images.is_dir():
+            return True
+        if attempt < attempts - 1:
+            print("Fetch failed, trying again (attempt %d of %d)." %
+                  (attempt + 2, attempts))
+            time.sleep(5)
+    return False
+
+
 def create_one(row, guest, recreate):
     """Creates one guest and pins the values avdmanager drops or overrides.
 
@@ -609,11 +630,7 @@ def create_one(row, guest, recreate):
     if not images.is_dir():
         print("The system image is missing. Fetching it, which takes a few minutes:")
         print('  android --no-metrics sdk install "%s"' % row["image"])
-        # The CLI ends with 0 even for a package it does not know, so only the
-        # folder counts. Measured on 2026-09-24.
-        command = [ANDROID_CLI, "--no-metrics", "--sdk=%s" % SDK,
-                   "sdk", "install", row["image"]]
-        if run_tool(command, quiet=True) != 0 or not images.is_dir():
+        if not fetch_system_image(row["image"], images):
             problem("the Android CLI did not fetch %s." % row["image"])
             return False
 
