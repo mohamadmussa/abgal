@@ -51,6 +51,7 @@ UMLAUT_EXEMPT_PATHS = {
     "docs/dashboard-design.de.md",
     "docs/view-service.de.md",
     "docs/github-runner.de.md",
+    "docs/hosted-runners.de.md",
     "README.de.md",
     "CONTRIBUTING.de.md",
     "apk/README.de.md",
