@@ -1,5 +1,9 @@
 # AbGal
 
+<p align="center">
+  <img src="docs/img/banner.jpg" alt="AbGal, a temple of swirling teal, sky blue and gold lines, the logo at its peak." width="800">
+</p>
+
 *[Auf Deutsch](README.de.md)*
 
 [![Build status](https://github.com/mohamadmussa/abgal/actions/workflows/checks.yml/badge.svg)](https://github.com/mohamadmussa/abgal/actions/workflows/checks.yml)
