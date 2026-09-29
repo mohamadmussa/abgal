@@ -10,8 +10,8 @@ add one.
 ## The line
 
 ```text
-# template                               | device              | api | tag                   | abi    | ram  | note
-phone-1080x2400-480-api35-x86_64         | phone-1080x2400-480 | 35  | google_apis           | x86_64 | 1536 | Phone class screen at 480 dpi, Google services without a store
+# template                               | device              | api | tag                   | abi    | ram  | cores | note
+phone-1080x2400-480-api35-x86_64         | phone-1080x2400-480 | 35  | google_apis           | x86_64 | 1536 | 4     | Phone class screen at 480 dpi, Google services without a store
 ```
 
 | Column | Meaning |
@@ -22,6 +22,7 @@ phone-1080x2400-480-api35-x86_64         | phone-1080x2400-480 | 35  | google_ap
 | `tag` | `google_apis`, `google_apis_playstore` or `default` |
 | `abi` | `x86_64` or `arm64-v8a`, spelled as in the system image path |
 | `ram` | Memory of the guest in MB. It decides how many guests fit at once |
+| `cores` | `hw.cpu.ncore` of the guest, shown by `abgal status` and the web UI |
 | `note` | What the template is for, shown by `abgal list` |
 
 The name repeats screen, density, API level and instruction set on purpose, so
@@ -41,12 +42,13 @@ sets these afterwards in `avd/<guest>.avd/config.ini`:
 |---|---|---|---|
 | `PlayStore.enabled` | `no` | `yes` | only for the `google_apis_playstore` tag |
 | `hw.ramSize` | `2G` | the `ram` column | `devices.xml` cannot carry it |
+| `hw.cpu.ncore` | varies | the `cores` column | `devices.xml` cannot carry it either |
 | `hw.camera.front` | `none` | `emulated` | the screen description has one |
 | `firstboot.bootFromDownloadableSnapshot` | `yes` | `no` | would fetch state from the network |
 | `firstboot.bootFromLocalSnapshot` | `yes` | `no` | a run must not depend on the one before |
 | `firstboot.saveToLocalSnapshot` | `yes` | `no` | the same in the other direction |
 
-Then it reads the file back and checks thirteen lines: the six above, plus
+Then it reads the file back and checks fourteen lines: the seven above, plus
 `abi.type`, `hw.device.name`, `hw.lcd.density`, `hw.lcd.height`,
 `hw.lcd.width`, `image.sysdir.1` and `tag.id`. Screen size and density are
 taken from `devices.xml`, not from a fixed number, so a tablet is checked

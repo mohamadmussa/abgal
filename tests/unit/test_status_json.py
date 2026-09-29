@@ -53,3 +53,12 @@ def test_status_json_with_no_guests_on_disk_is_an_empty_list(monkeypatch, tmp_pa
     result = run_status_json(monkeypatch, tmp_path)
 
     assert result["guests"] == []
+
+
+def test_status_json_reports_cores_from_config_ini(monkeypatch, tmp_path, fake_proc):
+    folder = make_guest(tmp_path, "dev-a")
+    (folder / "config.ini").write_text("hw.cpu.ncore=6\n")
+
+    result = run_status_json(monkeypatch, tmp_path)
+
+    assert result["guests"][0]["cores"] == "6"

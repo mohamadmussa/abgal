@@ -493,6 +493,7 @@ function renderGuests(rows) {
       ["adb", g.adb ?? "-"],
       ["memory", g.stats ? g.stats.mem_mb + " MB" : "-"],
       ["cpu", g.stats ? g.stats.cpu_percent + "%" : "-"],
+      ["cores", g.cores ?? "-"],
     ]) {
       const line = document.createElement("div");
       line.textContent = k + ": " + v;

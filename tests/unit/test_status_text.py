@@ -36,7 +36,7 @@ def test_status_text_headers_use_name_and_device(monkeypatch, tmp_path):
     out = run_status_text(monkeypatch, tmp_path)
 
     header = out.splitlines()[0].split()
-    assert header[:8] == ["NAME", "ID", "STATE", "DEVICE", "ADB", "MEM", "CPU", "UPTIME"]
+    assert header[:9] == ["NAME", "ID", "STATE", "DEVICE", "ADB", "MEM", "CPU", "CORES", "UPTIME"]
 
 
 def test_status_text_state_is_stopped_without_a_pid(monkeypatch, tmp_path):
@@ -63,7 +63,8 @@ def test_status_text_mem_cpu_and_uptime_are_blank_without_a_pid(monkeypatch, tmp
     out = run_status_text(monkeypatch, tmp_path)
 
     row = out.splitlines()[1].split()
-    assert row[5:8] == ["-", "-", "-"]
+    assert row[5:7] == ["-", "-"]
+    assert row[8] == "-"
 
 
 def test_status_text_mem_cpu_and_uptime_come_from_process_stats(monkeypatch, tmp_path):
@@ -73,7 +74,8 @@ def test_status_text_mem_cpu_and_uptime_come_from_process_stats(monkeypatch, tmp
                           stats={"mem_mb": 612, "cpu_percent": 3.2, "uptime_s": 12})
 
     row = out.splitlines()[1].split()
-    assert row[5:8] == ["612", "3.2", "00:00:00"]
+    assert row[5:7] == ["612", "3.2"]
+    assert row[8] == "00:00:00"
 
 
 def test_status_text_uptime_is_days_hours_minutes(monkeypatch, tmp_path):
@@ -84,7 +86,7 @@ def test_status_text_uptime_is_days_hours_minutes(monkeypatch, tmp_path):
                           stats={"mem_mb": 612, "cpu_percent": 3.2, "uptime_s": seconds})
 
     row = out.splitlines()[1].split()
-    assert row[7] == "02:05:07"
+    assert row[8] == "02:05:07"
 
 
 def test_status_text_mem_cpu_and_uptime_are_blank_when_process_stats_fails(monkeypatch, tmp_path):
@@ -93,4 +95,15 @@ def test_status_text_mem_cpu_and_uptime_are_blank_when_process_stats_fails(monke
     out = run_status_text(monkeypatch, tmp_path, pid=1234, attached_state="device", stats=None)
 
     row = out.splitlines()[1].split()
-    assert row[5:8] == ["-", "-", "-"]
+    assert row[5:7] == ["-", "-"]
+    assert row[8] == "-"
+
+
+def test_status_text_cores_comes_from_config_ini(monkeypatch, tmp_path):
+    folder = make_guest(tmp_path, "dev-a")
+    (folder / "config.ini").write_text("hw.cpu.ncore=6\n")
+
+    out = run_status_text(monkeypatch, tmp_path)
+
+    row = out.splitlines()[1].split()
+    assert row[7] == "6"
