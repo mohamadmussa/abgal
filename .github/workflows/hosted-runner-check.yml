@@ -25,7 +25,7 @@ jobs:
             self-hosted,
           ]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +43,7 @@ jobs:
       # avdmanager, unlike the bundled Android CLI, is the classic tool and
       # needs a system JAVA_HOME. A minimal runner may not ship one.
       - name: Set up Java for avdmanager
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -71,9 +71,44 @@ jobs:
         run: python3 abgal start -n ci --no-watch
         continue-on-error: true
 
+      # A GitHub-hosted runner has no inbound reachable address, binding
+      # wider than loopback would not make it reachable anyway. Only
+      # self-hosted sits on a real network, so only there is the web UI
+      # worth exposing and worth watching by hand.
+      - name: Start the web UI
+        id: webui
+        if: matrix.runner == 'self-hosted'
+        run: |
+          nohup python3 abgal webui --address 0.0.0.0 --port 8099 > webui.log 2>&1 &
+          echo "webui_pid=$!" >> "$GITHUB_ENV"
+          echo "Web UI reachable at http://$(hostname -I | awk '{print $1}'):8099/"
+        continue-on-error: true
+
+      # Proves the guest holds up under sustained use, not just right after
+      # a fresh start, see #94. The curl only runs where the web UI does.
+      - name: Hold for 15 minutes with the web UI active
+        id: hold
+        env:
+          RUNNER_LABEL: ${{ matrix.runner }}
+        run: |
+          sleep 900
+          if [ "$RUNNER_LABEL" = "self-hosted" ]; then
+            curl --fail --silent --show-error http://127.0.0.1:8099/ -o /dev/null
+          fi
+        continue-on-error: true
+
       - name: abgal status
         id: status
         run: python3 abgal status
+        continue-on-error: true
+
+      - name: Stop the web UI
+        id: stop_webui
+        if: always() && matrix.runner == 'self-hosted'
+        run: |
+          if [ -n "${webui_pid:-}" ]; then
+            kill "$webui_pid" || true
+          fi
         continue-on-error: true
 
       - name: Stop the guest
@@ -100,7 +135,10 @@ jobs:
             echo "| doctor | ${{ steps.doctor.outcome }} |"
             echo "| create | ${{ steps.create.outcome }} |"
             echo "| start | ${{ steps.start.outcome }} |"
+            echo "| webui | ${{ steps.webui.outcome }} |"
+            echo "| 15 minute hold | ${{ steps.hold.outcome }} |"
             echo "| status | ${{ steps.status.outcome }} |"
+            echo "| stop webui | ${{ steps.stop_webui.outcome }} |"
             echo "| stop | ${{ steps.stop.outcome }} |"
             echo "| delete | ${{ steps.delete.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -117,10 +155,15 @@ jobs:
             "${{ steps.doctor.outcome }}" \
             "${{ steps.create.outcome }}" \
             "${{ steps.start.outcome }}" \
+            "${{ steps.webui.outcome }}" \
+            "${{ steps.hold.outcome }}" \
             "${{ steps.status.outcome }}" \
+            "${{ steps.stop_webui.outcome }}" \
             "${{ steps.stop.outcome }}" \
             "${{ steps.delete.outcome }}"; do
-            if [ "$outcome" != "success" ]; then
+            # webui and stop_webui are skipped by design outside self-hosted,
+            # see the "Start the web UI" step's condition above.
+            if [ "$outcome" != "success" ] && [ "$outcome" != "skipped" ]; then
               echo "At least one step did not succeed, see the summary above." >&2
               exit 1
             fi
