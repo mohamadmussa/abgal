@@ -2090,21 +2090,24 @@ def run_runner_script(target, script, extra_args, timeout):
 def sudo_available(target):
     """Whether sudo can run this runner's own svc.sh without prompting.
 
-    Checked once before create touches config.sh at all, so a missing
-    sudo access is never worked around by registering with GitHub and
-    then having to roll that back again when svc.sh turns out to need a
-    password nothing here can supply.
-
-    Tests the actual command, `sudo -n -l <target>/svc.sh`, rather than a
-    stand-in like `sudo -n true`: a NOPASSWD rule scoped to svc.sh, the
-    least-privilege setup unattended use should have, passes this check
-    and fails a generic one.
+    svc.sh does not exist yet at this point, config.sh has not run, so a
+    placeholder is put at that exact path just for the check; sudo would
+    otherwise report "command not found" rather than judge permissions.
+    A stand-in command like `sudo -n true` dodges that, but then also
+    passes for a blanket NOPASSWD, defeating a rule scoped to svc.sh.
     """
+    probe = target / "svc.sh"
+    made_probe = not probe.exists()
     try:
-        return subprocess.run(["sudo", "-n", "-l", str(target / "svc.sh")],
+        if made_probe:
+            probe.touch(mode=0o755)
+        return subprocess.run(["sudo", "-n", "-l", str(probe)],
                               capture_output=True, timeout=5).returncode == 0
     except OSError:
         return False
+    finally:
+        if made_probe:
+            probe.unlink(missing_ok=True)
 
 
 def run_svc_script(target, extra_args, timeout):
