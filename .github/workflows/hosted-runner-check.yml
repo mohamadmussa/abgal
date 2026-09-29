@@ -18,10 +18,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Narrowed to self-hosted for the 8 GB RAM test, ubuntu-latest and
+        # ubuntu-26.04 go back in once that is confirmed, see #94.
         runner:
           [
-            ubuntu-latest,
-            ubuntu-26.04,
             self-hosted,
           ]
     runs-on: ${{ matrix.runner }}
@@ -58,9 +58,11 @@ jobs:
         run: python3 abgal doctor
         continue-on-error: true
 
-      - name: Create the smallest guest
+      # 8192ram for this run, testing self-hosted with headroom instead of
+      # the smallest template, see #94.
+      - name: Create the guest
         id: create
-        run: python3 abgal create phone-1080x2400-480-api35-x86_64 --as ci
+        run: python3 abgal create phone-1080x2400-480-api35-x86_64-8192ram --as ci
         continue-on-error: true
 
       # A hosted runner exposes no processor temperature, so the watch
