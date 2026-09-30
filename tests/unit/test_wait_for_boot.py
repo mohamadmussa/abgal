@@ -1,4 +1,4 @@
-"""wait_for_boot, and the restart -change-locale causes."""
+"""wait_for_boot, and the restart a reboot causes."""
 
 import abgal
 
@@ -23,8 +23,8 @@ def test_wait_for_boot_true_on_two_readings_in_a_row(monkeypatch):
 
 
 def test_wait_for_boot_ignores_a_single_reading_before_a_restart(monkeypatch):
-    # The pattern -change-locale causes: up once, down for the restart, up
-    # again and staying up. A single 1 must not be enough on its own.
+    # The pattern a reboot causes: up once, down for the restart, up again
+    # and staying up. A single 1 must not be enough on its own.
     monkeypatch.setattr(abgal, "adb", fake_adb(["1", "0", "1", "1"]))
     monkeypatch.setattr(abgal.time, "sleep", lambda seconds: None)
 
@@ -38,3 +38,21 @@ def test_wait_for_boot_false_when_never_settled(monkeypatch):
     monkeypatch.setattr(abgal.time, "sleep", lambda seconds: None)
 
     assert abgal.wait_for_boot("emulator-5554", seconds=30) is False
+
+
+def test_apply_locale_writes_the_setting_and_reboots_before_waiting(monkeypatch):
+    calls = []
+    monkeypatch.setattr(abgal, "adb", lambda *args, **kwargs: calls.append((args, kwargs)) or (0, "", ""))
+    monkeypatch.setattr(abgal, "wait_for_boot", lambda serial, seconds: True)
+
+    assert abgal.apply_locale("emulator-5554", "ar-SA", seconds=30) is True
+    assert calls[0] == (("shell", "settings", "put", "system", "system_locales", "ar-SA"),
+                        {"serial": "emulator-5554"})
+    assert calls[1] == (("reboot",), {"serial": "emulator-5554"})
+
+
+def test_apply_locale_returns_false_when_the_reboot_never_settles(monkeypatch):
+    monkeypatch.setattr(abgal, "adb", lambda *args, **kwargs: (0, "", ""))
+    monkeypatch.setattr(abgal, "wait_for_boot", lambda serial, seconds: False)
+
+    assert abgal.apply_locale("emulator-5554", "ar-SA", seconds=30) is False
