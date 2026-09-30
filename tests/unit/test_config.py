@@ -48,7 +48,7 @@ def test_set_value_leaves_a_matching_key_untouched():
 
 def row(**overrides):
     base = {"name": "phone", "device": "pixel_6", "api": "35", "tag": "google_apis",
-            "abi": "x86_64", "ram": "1536", "note": ""}
+            "abi": "x86_64", "ram": "1536", "cores": "4", "note": ""}
     base.update(overrides)
     return base
 
@@ -65,6 +65,7 @@ def test_verify_passes_when_every_value_matches(tmp_path, monkeypatch):
         "firstboot.bootFromLocalSnapshot=no",
         "firstboot.saveToLocalSnapshot=no",
         "hw.camera.front=emulated",
+        "hw.cpu.ncore=4",
         "hw.device.name=pixel_6",
         "hw.lcd.density=480",
         "hw.lcd.height=2400",

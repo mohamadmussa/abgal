@@ -4,8 +4,8 @@ import abgal
 
 DEVICES_CONF = """\
 # comment, ignored
-phone-1080x2400-480-api35-x86_64|pixel_6|35|google_apis|x86_64|1536|phone
-store-1080x2400-480-api35-x86_64|pixel_6|35|google_apis_playstore|x86_64|2048|with Play Store
+phone-1080x2400-480-api35-x86_64|pixel_6|35|google_apis|x86_64|1536|4|phone
+store-1080x2400-480-api35-x86_64|pixel_6|35|google_apis_playstore|x86_64|2048|4|with Play Store
 
 """
 
@@ -24,6 +24,7 @@ def test_template_rows_parses_every_column(tmp_path, monkeypatch):
     assert first["tag"] == "google_apis"
     assert first["abi"] == "x86_64"
     assert first["ram"] == "1536"
+    assert first["cores"] == "4"
     assert first["note"] == "phone"
 
 

@@ -136,10 +136,12 @@ Vorlagen, das Innenleben und jede Fehlermeldung.
 ### Vorlagen
 
 `devices.conf` hat eine Zeile je Vorlage, `devices.xml` beschreibt die
-Bildschirme. Sechs Vorlagen liefert AbGal mit, alle ein Telefonbildschirm mit
+Bildschirme. Acht Vorlagen liefert AbGal mit, alle ein Telefonbildschirm mit
 1080 x 2400 bei 480 dpi: API 35, 36 und 37 ohne Store, API 35 mit dem Play
-Store, und API 35 mit 4096 oder 5120 MB. Der Kommentar oben in
-`devices.conf` erklärt jede Spalte und wie man eine Vorlage hinzufügt.
+Store, API 35 mit 4096, 5120 oder 8192 MB, und API 35 mit dem Play Store,
+6144 MB und 6 Kernen für ein AVD, das sich bei einem echten Google Konto
+anmeldet. Der Kommentar oben in `devices.conf` erklärt jede Spalte und wie
+man eine Vorlage hinzufügt.
 
 ### Wie viele AVDs passen
 
