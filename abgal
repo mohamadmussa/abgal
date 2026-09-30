@@ -2140,18 +2140,27 @@ def run_runner_script(target, script, extra_args, timeout):
         return SimpleNamespace(returncode=1, stdout="", stderr="%s could not run: %s" % (script, err))
 
 
-def sudo_available():
-    """Whether sudo can run svc.sh without prompting, cached ticket or NOPASSWD.
+def sudo_available(target):
+    """Whether sudo can run this runner's own svc.sh without prompting.
 
-    Checked once before create touches config.sh at all, so a missing
-    sudo access is never worked around by registering with GitHub and
-    then having to roll that back again when svc.sh turns out to need a
-    password nothing here can supply.
+    svc.sh does not exist yet at this point, config.sh has not run, so a
+    placeholder is put at that exact path just for the check; sudo would
+    otherwise report "command not found" rather than judge permissions.
+    A stand-in command like `sudo -n true` dodges that, but then also
+    passes for a blanket NOPASSWD, defeating a rule scoped to svc.sh.
     """
+    probe = target / "svc.sh"
+    made_probe = not probe.exists()
     try:
-        return subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=5).returncode == 0
+        if made_probe:
+            probe.touch(mode=0o755)
+        return subprocess.run(["sudo", "-n", "-l", str(probe)],
+                              capture_output=True, timeout=5).returncode == 0
     except OSError:
         return False
+    finally:
+        if made_probe:
+            probe.unlink(missing_ok=True)
 
 
 def run_svc_script(target, extra_args, timeout):
@@ -2332,7 +2341,7 @@ def cmd_github_runner_create(args):
         shutil.rmtree(target, ignore_errors=True)
         return problem("could not get a registration token: %s" % error)
 
-    if backend == "host" and not sudo_available():
+    if backend == "host" and not sudo_available(target):
         shutil.rmtree(target, ignore_errors=True)
         return problem("svc.sh needs root and sudo is not ready. Run 'sudo -v' first, "
                        "or set up passwordless sudo for svc.sh for unattended use.")
