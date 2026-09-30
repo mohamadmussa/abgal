@@ -865,12 +865,12 @@ def wait_for_console(name, seconds):
 
 
 def wait_for_boot(serial, seconds):
-    """Waits for sys.boot_completed, tolerating the restart -change-locale causes.
+    """Waits for sys.boot_completed, tolerating the restart a reboot causes.
 
-    -change-locale cold boots once and restarts the framework to apply, so
-    boot_completed can read 1 briefly, drop back to 0 for the restart, and
-    only then read 1 for good. One reading of 1 is therefore not enough,
-    two in a row are required before the guest counts as up.
+    apply_locale reboots the guest to make a locale change stick, and a
+    reboot can read boot_completed as 1 briefly on its way down, drop back
+    to 0, and only then read 1 for good. One reading of 1 is therefore not
+    enough, two in a row are required before the guest counts as up.
     """
     deadline = time.time() + seconds
     seen_once = False
@@ -884,6 +884,21 @@ def wait_for_boot(serial, seconds):
             seen_once = False
         time.sleep(3)
     return False
+
+
+def apply_locale(serial, locale, seconds):
+    """Sets the locale with settings put, then reboots to make it stick.
+
+    settings put system system_locales writes the value as the shell user,
+    no su needed, on every template including a production build. The
+    running framework does not pick it up on its own though: the shell user
+    is not allowed to send the LOCALE_CHANGED broadcast that would tell it
+    to. A full reboot picks it up instead, since the framework reads
+    system_locales fresh at every cold start.
+    """
+    adb("shell", "settings", "put", "system", "system_locales", locale, serial=serial)
+    adb("reboot", serial=serial)
+    return wait_for_boot(serial, seconds)
 
 
 def start_one(args, name):
@@ -973,11 +988,12 @@ def start_one(args, name):
         # Measured on 2026-09-30: -prop persist.sys.locale and
         # persist.sys.timezone are both rejected, "only 'qemu.*' properties
         # are supported", and the guest silently keeps the image's own
-        # locale. -change-locale and -timezone are the flags the emulator
-        # itself documents for this. -change-locale cold boots once and
-        # restarts the framework to apply, which is why wait_for_boot below
-        # has to tolerate a boot_completed flag that goes back to 0.
-        "-change-locale", args.locale,
+        # locale. -timezone is the flag the emulator itself documents for
+        # this and needs no root. -change-locale would be the matching flag
+        # for the locale, but it shells out to su itself, which a
+        # production build such as the store template does not have, and
+        # fails silently there. apply_locale below sets the locale after
+        # boot instead, with settings put, which needs no su on any build.
         "-timezone", args.timezone,
     ]
     if args.wipe:
@@ -1075,6 +1091,12 @@ def start_one(args, name):
     if not wait_for_boot(serial, args.timeout):
         return problem("%s is running on %s but did not report a completed boot "
                        "in %d s." % (name, serial, args.timeout))
+
+    print("Setting the locale to %s and rebooting to apply it." % args.locale)
+    if not apply_locale(serial, args.locale, args.timeout):
+        return problem("%s did not come back up within %d s after the reboot "
+                       "that applies --locale %s." % (name, args.timeout, args.locale))
+
     print("%s is ready on %s." % (name, serial))
     return 0
 

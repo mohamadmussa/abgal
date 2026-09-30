@@ -134,6 +134,11 @@ sequenceDiagram
     loop every 3 s, up to --timeout
         U->>A: getprop sys.boot_completed
     end
+    U->>A: settings put system system_locales <locale>
+    U->>A: reboot
+    loop every 3 s, up to --timeout
+        U->>A: getprop sys.boot_completed
+    end
     Note over U: ready
 ```
 
@@ -146,10 +151,19 @@ The emulator is always started with these flags:
 | `-gpu software` | Renders on the processor, which works on every machine. `--gpu host` or `ABGAL_GPU` changes it |
 | `-lowram` | See [Memory](#memory) |
 | `-no-snapshot-load`, `-no-snapshot-save` | Every start is a cold boot, so no run depends on the one before |
-| `-change-locale en-US` | Language, from `--locale` or `ABGAL_LOCALE`, cold boots once more to apply |
 | `-timezone Europe/Berlin` | Time zone, from `--timezone` |
 
 `--wipe` adds `-wipe-data`, `--port` adds `-port`.
+
+The locale is not an emulator flag. `-change-locale`, the flag the emulator
+itself documents for it, shells out to `su` to set the property, and a
+production build, such as the store template, has none. Once the first boot
+is up, `start` instead runs `adb shell settings put system system_locales
+<locale>`, from `--locale` or `ABGAL_LOCALE`, which needs no `su` on any
+build, then `adb reboot` to make the guest pick it up, and waits for
+`sys.boot_completed` again. `wait_for_boot` already tolerates the flag
+dropping back to 0 during a restart, so this second wait needs no change
+there.
 
 `--dry-run` prints this command line and what each check would say: whether
 the guest runs already, whether the memory fits, whether its `hw.ramSize`
