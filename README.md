@@ -134,10 +134,11 @@ workings and every error message.
 ### Templates
 
 `devices.conf` holds one line per template, `devices.xml` describes the
-screens. Six templates ship with AbGal, all a phone screen of 1080 x 2400 at
-480 dpi: API 35, 36 and 37 without a store, API 35 with the Play Store, and
-API 35 with 4096 or 5120 MB. The comment at the top of `devices.conf` says
-what each column means and how to add a template.
+screens. Eight templates ship with AbGal, all a phone screen of 1080 x 2400 at
+480 dpi: API 35, 36 and 37 without a store, API 35 with the Play Store, API 35
+with 4096, 5120 or 8192 MB, and API 35 with the Play Store, 6144 MB and 6
+cores for a guest that signs into a real Google account. The comment at the
+top of `devices.conf` says what each column means and how to add a template.
 
 ### How many guests fit
 

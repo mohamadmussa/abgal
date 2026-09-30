@@ -11,8 +11,8 @@ eine hinzufügt.
 ## Die Zeile
 
 ```text
-# template                               | device              | api | tag                   | abi    | ram  | note
-phone-1080x2400-480-api35-x86_64         | phone-1080x2400-480 | 35  | google_apis           | x86_64 | 1536 | Phone class screen at 480 dpi, Google services without a store
+# template                               | device              | api | tag                   | abi    | ram  | cores | note
+phone-1080x2400-480-api35-x86_64         | phone-1080x2400-480 | 35  | google_apis           | x86_64 | 1536 | 4     | Phone class screen at 480 dpi, Google services without a store
 ```
 
 | Spalte | Bedeutung |
@@ -23,6 +23,7 @@ phone-1080x2400-480-api35-x86_64         | phone-1080x2400-480 | 35  | google_ap
 | `tag` | `google_apis`, `google_apis_playstore` oder `default` |
 | `abi` | `x86_64` oder `arm64-v8a`, geschrieben wie im Pfad des Systemabbilds |
 | `ram` | Speicher des AVD in MB. Er entscheidet, wie viele AVDs gleichzeitig passen |
+| `cores` | `hw.cpu.ncore` des AVD, gezeigt von `abgal status` und der WebUI |
 | `note` | Wofür die Vorlage da ist, gezeigt von `abgal list` |
 
 Der Name wiederholt Bildschirm, Dichte, API Stufe und Befehlssatz mit Absicht,
@@ -44,12 +45,13 @@ Systemabbild an. Mehrere Werte lässt es dabei ohne Meldung fallen oder
 |---|---|---|---|
 | `PlayStore.enabled` | `no` | `yes` | nur für den Tag `google_apis_playstore` |
 | `hw.ramSize` | `2G` | die Spalte `ram` | `devices.xml` kann ihn nicht tragen |
+| `hw.cpu.ncore` | wechselnd | die Spalte `cores` | `devices.xml` kann ihn auch nicht tragen |
 | `hw.camera.front` | `none` | `emulated` | die Bildschirmbeschreibung hat eine |
 | `firstboot.bootFromDownloadableSnapshot` | `yes` | `no` | würde Zustand aus dem Netz holen |
 | `firstboot.bootFromLocalSnapshot` | `yes` | `no` | ein Lauf darf nicht vom vorigen abhängen |
 | `firstboot.saveToLocalSnapshot` | `yes` | `no` | dasselbe in die andere Richtung |
 
-Dann liest es die Datei zurück und prüft dreizehn Zeilen: die sechs oben, dazu
+Dann liest es die Datei zurück und prüft vierzehn Zeilen: die sieben oben, dazu
 `abi.type`, `hw.device.name`, `hw.lcd.density`, `hw.lcd.height`,
 `hw.lcd.width`, `image.sysdir.1` und `tag.id`. Bildschirmgröße und Dichte kommen
 aus `devices.xml` und nicht aus einer festen Zahl, damit ein Tablet gegen seinen

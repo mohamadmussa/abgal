@@ -149,8 +149,8 @@ Der Emulator startet immer mit diesen Schaltern:
 | `-gpu software` | Rechnet auf dem Prozessor, das geht auf jedem Rechner. `--gpu host` oder `ABGAL_GPU` ändert es |
 | `-lowram` | Siehe [Speicher](#speicher) |
 | `-no-snapshot-load`, `-no-snapshot-save` | Jeder Start ist ein Kaltstart, damit kein Lauf vom vorigen abhängt |
-| `-prop persist.sys.locale=en-US` | Sprache, aus `--locale` oder `ABGAL_LOCALE` |
-| `-prop persist.sys.timezone=Europe/Berlin` | Zeitzone, aus `--timezone` |
+| `-change-locale en-US` | Sprache, aus `--locale` oder `ABGAL_LOCALE`, startet zum Anwenden noch einmal kalt |
+| `-timezone Europe/Berlin` | Zeitzone, aus `--timezone` |
 
 `--wipe` ergänzt `-wipe-data`, `--port` ergänzt `-port`.
 
