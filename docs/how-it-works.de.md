@@ -137,6 +137,11 @@ sequenceDiagram
     loop every 3 s, up to --timeout
         U->>A: getprop sys.boot_completed
     end
+    U->>A: settings put system system_locales <locale>
+    U->>A: reboot
+    loop every 3 s, up to --timeout
+        U->>A: getprop sys.boot_completed
+    end
     Note over U: ready
 ```
 
@@ -149,10 +154,20 @@ Der Emulator startet immer mit diesen Schaltern:
 | `-gpu software` | Rechnet auf dem Prozessor, das geht auf jedem Rechner. `--gpu host` oder `ABGAL_GPU` ändert es |
 | `-lowram` | Siehe [Speicher](#speicher) |
 | `-no-snapshot-load`, `-no-snapshot-save` | Jeder Start ist ein Kaltstart, damit kein Lauf vom vorigen abhängt |
-| `-change-locale en-US` | Sprache, aus `--locale` oder `ABGAL_LOCALE`, startet zum Anwenden noch einmal kalt |
 | `-timezone Europe/Berlin` | Zeitzone, aus `--timezone` |
 
 `--wipe` ergänzt `-wipe-data`, `--port` ergänzt `-port`.
+
+Die Sprache ist kein Schalter des Emulators. `-change-locale`, der Schalter,
+den der Emulator selbst dafür dokumentiert, ruft für das Setzen der
+Eigenschaft `su` auf, und eine Produktionsvariante, wie die Store Vorlage,
+hat keines. Sobald der erste Start steht, ruft `start` stattdessen `adb
+shell settings put system system_locales <locale>` auf, aus `--locale` oder
+`ABGAL_LOCALE`, was auf jeder Variante ohne `su` auskommt, danach `adb
+reboot`, damit das AVD es übernimmt, und wartet erneut auf
+`sys.boot_completed`. `wait_for_boot` verträgt schon, dass die Markierung
+während eines Neustarts auf 0 zurückfällt, dieses zweite Warten braucht dort
+also keine Änderung.
 
 `--dry-run` gibt diese Befehlszeile aus und dazu, was jede Prüfung sagen würde:
 ob das AVD schon läuft, ob der Speicher reicht, ob sein `hw.ramSize` von der
