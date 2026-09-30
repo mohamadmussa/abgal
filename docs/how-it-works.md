@@ -146,8 +146,8 @@ The emulator is always started with these flags:
 | `-gpu software` | Renders on the processor, which works on every machine. `--gpu host` or `ABGAL_GPU` changes it |
 | `-lowram` | See [Memory](#memory) |
 | `-no-snapshot-load`, `-no-snapshot-save` | Every start is a cold boot, so no run depends on the one before |
-| `-prop persist.sys.locale=en-US` | Language, from `--locale` or `ABGAL_LOCALE` |
-| `-prop persist.sys.timezone=Europe/Berlin` | Time zone, from `--timezone` |
+| `-change-locale en-US` | Language, from `--locale` or `ABGAL_LOCALE`, cold boots once more to apply |
+| `-timezone Europe/Berlin` | Time zone, from `--timezone` |
 
 `--wipe` adds `-wipe-data`, `--port` adds `-port`.
 

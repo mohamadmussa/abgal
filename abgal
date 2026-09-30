@@ -865,11 +865,23 @@ def wait_for_console(name, seconds):
 
 
 def wait_for_boot(serial, seconds):
+    """Waits for sys.boot_completed, tolerating the restart -change-locale causes.
+
+    -change-locale cold boots once and restarts the framework to apply, so
+    boot_completed can read 1 briefly, drop back to 0 for the restart, and
+    only then read 1 for good. One reading of 1 is therefore not enough,
+    two in a row are required before the guest counts as up.
+    """
     deadline = time.time() + seconds
+    seen_once = False
     while time.time() < deadline:
         code, out, _ = adb("shell", "getprop", "sys.boot_completed", serial=serial)
         if code == 0 and out.strip() == "1":
-            return True
+            if seen_once:
+                return True
+            seen_once = True
+        else:
+            seen_once = False
         time.sleep(3)
     return False
 
@@ -958,8 +970,15 @@ def start_one(args, name):
         "-lowram",
         "-no-snapshot-load",
         "-no-snapshot-save",
-        "-prop", "persist.sys.locale=" + args.locale,
-        "-prop", "persist.sys.timezone=" + args.timezone,
+        # Measured on 2026-09-30: -prop persist.sys.locale and
+        # persist.sys.timezone are both rejected, "only 'qemu.*' properties
+        # are supported", and the guest silently keeps the image's own
+        # locale. -change-locale and -timezone are the flags the emulator
+        # itself documents for this. -change-locale cold boots once and
+        # restarts the framework to apply, which is why wait_for_boot below
+        # has to tolerate a boot_completed flag that goes back to 0.
+        "-change-locale", args.locale,
+        "-timezone", args.timezone,
     ]
     if args.wipe:
         command += ["-wipe-data"]
