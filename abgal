@@ -1085,6 +1085,12 @@ def start_one(args, name):
         print("Temperature watch running. Log: %s" % watch_log)
 
     if args.no_wait:
+        # apply_locale needs the guest up to run settings put over adb, so it
+        # cannot run here: --no-wait returns before the guest is even known
+        # to have booted once, let alone rebooted a second time for this.
+        print("Note: --no-wait returns before the locale is applied. "
+              "%s stays at the image's own locale until a start without "
+              "--no-wait sets it." % name)
         return 0
 
     print("Waiting for the guest to finish booting.")
@@ -2691,7 +2697,8 @@ def build_parser():
     start.add_argument("--no-watch", action="store_true",
                        help="do not start the temperature watch")
     start.add_argument("--no-wait", action="store_true",
-                       help="return as soon as the console answers")
+                       help="return as soon as the console answers, before the "
+                            "locale is applied")
     start.add_argument("--timeout", type=int, default=300, metavar="SECONDS")
     start.add_argument("--dry-run", action="store_true",
                        help="show the command line and the checks, start nothing")
