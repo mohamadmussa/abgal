@@ -2140,21 +2140,25 @@ def run_runner_script(target, script, extra_args, timeout):
         return SimpleNamespace(returncode=1, stdout="", stderr="%s could not run: %s" % (script, err))
 
 
+def write_probe_script(probe):
+    """A stand-in svc.sh that does nothing, executable by everyone."""
+    probe.write_text("#!/bin/sh\nexit 0\n")
+    probe.chmod(0o755)
+
+
 def sudo_available(target):
     """Whether sudo can run this runner's own svc.sh without prompting.
 
-    svc.sh does not exist yet at this point, config.sh has not run, so a
-    placeholder is put at that exact path just for the check; sudo would
-    otherwise report "command not found" rather than judge permissions.
-    A stand-in command like `sudo -n true` dodges that, but then also
-    passes for a blanket NOPASSWD, defeating a rule scoped to svc.sh.
+    svc.sh does not exist yet, so a stand-in is put at that exact path and
+    really executed. `sudo -n true` is no substitute, it only passes for a
+    blanket NOPASSWD or a live ticket, never for a rule scoped to svc.sh.
     """
     probe = target / "svc.sh"
     made_probe = not probe.exists()
     try:
         if made_probe:
-            probe.touch(mode=0o755)
-        return subprocess.run(["sudo", "-n", "-l", str(probe)],
+            write_probe_script(probe)
+        return subprocess.run(["sudo", "-n", str(probe)],
                               capture_output=True, timeout=5).returncode == 0
     except OSError:
         return False

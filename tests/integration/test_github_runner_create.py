@@ -216,3 +216,53 @@ def test_create_fails_with_a_bad_checksum(home, monkeypatch, capsys):
     assert abgal.cmd_github_runner_create(args("ci-01", repo="o/r")) == 1
     assert "sha256" in capsys.readouterr().err
     assert not (home / "runners" / "ci-01").exists()
+
+
+def probe_recorder(seen, outcome):
+    """A subprocess.run stand-in that records the stand-in svc.sh while it runs."""
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        seen["mode"] = (probe_path(command)).stat().st_mode & 0o777
+        seen["content"] = probe_path(command).read_text()
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+    return fake_run
+
+
+def probe_path(command):
+    return abgal.Path(command[-1])
+
+
+def test_sudo_available_really_runs_a_stand_in_svc_sh(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(abgal.subprocess, "run", probe_recorder(seen, done()))
+
+    assert abgal.sudo_available(tmp_path) is True
+
+    assert seen["command"] == ["sudo", "-n", str(tmp_path / "svc.sh")]
+    assert seen["mode"] == 0o755
+    assert seen["content"] == "#!/bin/sh\nexit 0\n"
+    assert not (tmp_path / "svc.sh").exists()
+
+
+def test_sudo_available_removes_the_stand_in_after_a_timeout(tmp_path, monkeypatch):
+    seen = {}
+    timeout = abgal.subprocess.TimeoutExpired(["sudo"], 5)
+    monkeypatch.setattr(abgal.subprocess, "run", probe_recorder(seen, timeout))
+
+    with pytest.raises(abgal.subprocess.TimeoutExpired):
+        abgal.sudo_available(tmp_path)
+
+    assert seen["mode"] == 0o755
+    assert not (tmp_path / "svc.sh").exists()
+
+
+def test_sudo_available_keeps_an_existing_svc_sh(tmp_path, monkeypatch):
+    existing = tmp_path / "svc.sh"
+    existing.write_text("real")
+    monkeypatch.setattr(abgal.subprocess, "run", lambda command, **kwargs: done(returncode=1))
+
+    assert abgal.sudo_available(tmp_path) is False
+
+    assert existing.read_text() == "real"
