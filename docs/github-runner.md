@@ -49,6 +49,16 @@ runs `svc.sh` through `sudo`, regardless of how abgal itself was started, so
 create, remove and every status check may prompt for a sudo password unless
 the account has passwordless sudo set up for it.
 
+A rule scoped to the runners' `svc.sh` is enough, a blanket `NOPASSWD` is not
+needed. Put it in a file under `/etc/sudoers.d/`, edited with `visudo -f`:
+
+```text
+<user> ALL=(root) NOPASSWD: /path/to/abgal/runners/*/svc.sh
+```
+
+Before registering the runner, abgal checks that this `svc.sh` path runs under
+sudo without a password.
+
 **Container.** `create` refuses to run when abgal itself is already inside
 a container, nested containers are not supported. It pulls the runner
 image tagged with the pinned runner version from `runner-versions.conf`

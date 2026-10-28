@@ -52,6 +52,17 @@ wie abgal selbst gestartet wurde, sodass create, remove und jede
 status-Abfrage nach einem sudo-Passwort fragen können, außer das Konto hat
 passwortloses sudo dafür eingerichtet.
 
+Eine Regel, die auf `svc.sh` der Runner beschränkt ist, genügt, ein pauschales
+`NOPASSWD` ist nicht nötig. Sie gehört in eine Datei unter `/etc/sudoers.d/`,
+bearbeitet mit `visudo -f`:
+
+```text
+<user> ALL=(root) NOPASSWD: /path/to/abgal/runners/*/svc.sh
+```
+
+Bevor der Runner registriert wird, prüft abgal, dass dieser `svc.sh`-Pfad unter
+sudo ohne Passwort läuft.
+
 **Container.** `create` verweigert den Start, wenn abgal selbst schon in
 einem Container läuft, verschachtelte Container werden nicht unterstützt.
 Es zieht das Runner-Image mit dem Tag der festgelegten Runner-Version aus
