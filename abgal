@@ -2154,17 +2154,18 @@ def sudo_available(target):
     blanket NOPASSWD or a live ticket, never for a rule scoped to svc.sh.
     """
     probe = target / "svc.sh"
-    made_probe = not probe.exists()
+    if probe.exists():
+        # On the create path svc.sh is only generated later by config.sh.
+        # An existing one is not ours to run as root.
+        return False
     try:
-        if made_probe:
-            write_probe_script(probe)
+        write_probe_script(probe)
         return subprocess.run(["sudo", "-n", str(probe)],
                               capture_output=True, timeout=5).returncode == 0
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return False
     finally:
-        if made_probe:
-            probe.unlink(missing_ok=True)
+        probe.unlink(missing_ok=True)
 
 
 def run_svc_script(target, extra_args, timeout):
@@ -2348,7 +2349,8 @@ def cmd_github_runner_create(args):
     if backend == "host" and not sudo_available(target):
         shutil.rmtree(target, ignore_errors=True)
         return problem("svc.sh needs root and sudo is not ready. Run 'sudo -v' first, "
-                       "or set up passwordless sudo for svc.sh for unattended use.")
+                       "or set up passwordless sudo for svc.sh for unattended use, "
+                       "see docs/github-runner.md for the scoped sudoers rule.")
 
     if backend == "host":
         result = create_host_runner(args.name, target, repo, labels, token)

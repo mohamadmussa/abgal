@@ -251,18 +251,19 @@ def test_sudo_available_removes_the_stand_in_after_a_timeout(tmp_path, monkeypat
     timeout = abgal.subprocess.TimeoutExpired(["sudo"], 5)
     monkeypatch.setattr(abgal.subprocess, "run", probe_recorder(seen, timeout))
 
-    with pytest.raises(abgal.subprocess.TimeoutExpired):
-        abgal.sudo_available(tmp_path)
+    assert abgal.sudo_available(tmp_path) is False
 
     assert seen["mode"] == 0o755
     assert not (tmp_path / "svc.sh").exists()
 
 
-def test_sudo_available_keeps_an_existing_svc_sh(tmp_path, monkeypatch):
+def test_sudo_available_never_runs_an_existing_svc_sh(tmp_path, monkeypatch):
     existing = tmp_path / "svc.sh"
     existing.write_text("real")
-    monkeypatch.setattr(abgal.subprocess, "run", lambda command, **kwargs: done(returncode=1))
+    calls = []
+    monkeypatch.setattr(abgal.subprocess, "run", lambda *args, **kwargs: calls.append(args))
 
     assert abgal.sudo_available(tmp_path) is False
 
+    assert calls == []
     assert existing.read_text() == "real"
