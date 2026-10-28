@@ -216,7 +216,8 @@ $adb -s emulator-5554 shell start
 
 This restarts Android inside the running guest, without priming. Measured
 once: SurfaceFlinger finished its boot in 9 seconds instead of 24, and no
-dialog came. Without the property, every boot brings the dialog back.
+dialog came. The property is lost on the next boot, so a later boot can
+bring the dialog back.
 
 `--gpu host` would avoid the slow priming, but see the next section first.
 

@@ -223,8 +223,8 @@ $adb -s emulator-5554 shell start
 
 Das startet Android im laufenden AVD neu, ohne Vorkompilieren. Einmal
 gemessen: SurfaceFlinger war nach 9 statt 24 Sekunden mit dem Boot fertig,
-und es kam kein Dialog. Ohne die Eigenschaft bringt jeder Boot den Dialog
-zurück.
+und es kam kein Dialog. Die Eigenschaft geht beim nächsten Boot verloren,
+danach kann der Dialog wiederkommen.
 
 `--gpu host` würde das langsame Vorkompilieren vermeiden, aber lies vorher
 den nächsten Abschnitt.
