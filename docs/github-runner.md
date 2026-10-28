@@ -56,6 +56,10 @@ needed. Put it in a file under `/etc/sudoers.d/`, edited with `visudo -f`:
 <user> ALL=(root) NOPASSWD: /path/to/abgal/runners/*/svc.sh
 ```
 
+Because the account can write into `runners/` itself, it can put any `svc.sh`
+there and run it as root. In practice the rule is equal to root for this
+account. It only saves typing a password, it is not a security boundary.
+
 Before registering the runner, abgal checks that this `svc.sh` path runs under
 sudo without a password.
 

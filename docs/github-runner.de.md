@@ -60,6 +60,11 @@ bearbeitet mit `visudo -f`:
 <user> ALL=(root) NOPASSWD: /path/to/abgal/runners/*/svc.sh
 ```
 
+Weil das Konto selbst in `runners/` schreiben darf, kann es dort ein
+beliebiges `svc.sh` ablegen und als Root ausführen. Die Regel ist für dieses
+Konto in der Praxis gleichbedeutend mit Root. Sie erspart nur die
+Passworteingabe, eine Sicherheitsgrenze ist sie nicht.
+
 Bevor der Runner registriert wird, prüft abgal, dass dieser `svc.sh`-Pfad unter
 sudo ohne Passwort läuft.
 
