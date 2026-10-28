@@ -175,6 +175,93 @@ einem langsamen Rechner mit `--gpu software` kann der erste Start länger
 dauern. Gib ihm mit `--timeout 600` mehr Zeit, oder sieh dir das AVD mit
 `sdk/platform-tools/adb -s emulator-5554 logcat` an.
 
+## System UI isn't responding nach dem Boot
+
+```text
+System UI isn't responding
+  Close app
+  Wait
+```
+
+Das ist keine Meldung von AbGal, Android zeigt sie im AVD. Sie kann nach
+einem Boot mit `--gpu software` auf einem langsameren Rechner kommen, und
+solange sie offen ist, landet jeder Tipp auf dem Dialog, das AVD wirkt also
+eingefroren. Ein Tipp auf einen der beiden Knöpfe genügt, danach läuft das
+AVD normal, System UI ist nur zu spät gestartet.
+
+Die Ursache ist der Shader Cache. Beim Boot kompiliert SurfaceFlinger seine
+Shader vorab in seinem RenderEngine Thread. Mit Software Rendering läuft das
+auf dem Prozessor und dauert etwa 24 Sekunden. System UI fragt SurfaceFlinger
+beim Start nach seiner GPU Kontextpriorität, diese Frage wartet auf denselben
+Thread, und Android gibt System UI auf, bevor die Antwort kommt:
+
+| Sekunden nach dem Start von SurfaceFlinger | Logzeile |
+|---|---|
+| 0 | `SurfaceFlinger: SurfaceFlinger is starting` |
+| etwa 7 | System UI startet und ruft `getGPUContextPriority` auf |
+| etwa 22 | `ActivityManager: ANR in com.android.systemui`, Grund `failed to complete startup` |
+| 24 | `RenderEngine: Shader cache generated 122 shaders in 23913 ms` |
+
+Um sicherzugehen, dass es genau das ist, sieh nach, wo System UI gewartet hat:
+
+```bash
+sdk/platform-tools/adb -s emulator-5554 shell dumpsys dropbox --print system_app_anr | grep -m1 getGPUContextPriority
+```
+
+Die Eigenschaft `service.sf.prime_shader_cache` schaltet das Vorkompilieren
+ab. Sie gilt nur bis zum nächsten Boot und braucht root, sie wirkt also auf
+einem Abbild ohne Play Store, nicht auf einem Store Abbild:
+
+```bash
+adb=sdk/platform-tools/adb
+$adb -s emulator-5554 root
+$adb -s emulator-5554 wait-for-device
+$adb -s emulator-5554 shell setprop service.sf.prime_shader_cache 0
+$adb -s emulator-5554 shell stop
+$adb -s emulator-5554 shell start
+```
+
+Das startet Android im laufenden AVD neu, ohne Vorkompilieren. Einmal
+gemessen: SurfaceFlinger war nach 9 statt 24 Sekunden mit dem Boot fertig,
+und es kam kein Dialog. Die Eigenschaft geht beim nächsten Boot verloren,
+danach kann der Dialog wiederkommen.
+
+`--gpu host` würde das langsame Vorkompilieren vermeiden, aber lies vorher
+den nächsten Abschnitt.
+
+## --gpu host startet nicht
+
+```text
+ERROR        | Failed to create Vulkan instance. Error VK_ERROR_INCOMPATIBLE_DRIVER.
+GlxEnginegetDefaultDisplay: Failed to open display 0. DISPLAY: [(null)]
+ERROR        | Could not start renderer
+```
+
+Diese Zeilen stehen in `logs/<guest>/emulator.log`, und `abgal start` gibt
+nach `--timeout` auf. Unter Linux rendert der Emulator in diesem Modus OpenGL
+über GLX, und GLX braucht einen X Server. Ein Rechner ohne Bildschirm hat
+keinen, ein leeres `DISPLAY` allein genügt also, damit der Start scheitert,
+auch wenn die Grafikkarte selbst ohne einen funktioniert. Prüf das zuerst:
+
+```bash
+echo "DISPLAY=$DISPLAY"
+```
+
+Ein leeres `DISPLAY` heißt, dass `--gpu host` nicht starten kann, egal welche
+Karte und welcher Treiber. Die zusätzliche Zeile `VK_ERROR_INCOMPATIBLE_DRIVER`
+kommt von Vulkan, das nur für die Vulkan Unterstützung im AVD eingerichtet
+wird. Eine ältere AMD Karte am Kerneltreiber `radeon` hat gar kein Vulkan, und
+das hier zeigt den Treiber (`card0` ist nicht auf jedem Rechner die
+Grafikkarte, zum Beispiel bei Hybridgrafik):
+
+```bash
+basename "$(readlink /sys/class/drm/card0/device/driver)"
+```
+
+Das AVD, das der gescheiterte Start hinterlässt, steht in `abgal status` als
+`not visible`. Beende es mit `abgal stop -n <guest>` und starte ohne
+`--gpu host` neu.
+
 ## Die Temperaturwache ist nicht angelaufen
 
 ```text
