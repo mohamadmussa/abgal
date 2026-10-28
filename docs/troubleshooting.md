@@ -169,6 +169,80 @@ The guest runs but Android has not finished booting. On a slow machine with
 `--timeout 600`, or look at the guest with
 `sdk/platform-tools/adb -s emulator-5554 logcat`.
 
+## System UI isn't responding after every boot
+
+```text
+System UI isn't responding
+  Close app
+  Wait
+```
+
+This is not AbGal's message, Android shows it inside the guest. It comes
+after every boot with `--gpu software`, and while it is open every tap lands
+on the dialog, so the guest looks frozen. Tap either button and the guest
+works normally, System UI only started too late.
+
+The cause is the shader cache. At boot SurfaceFlinger compiles its shaders
+in advance on its RenderEngine thread. With software rendering that runs on
+the processor and takes about 24 seconds. System UI asks SurfaceFlinger for
+its GPU context priority while it starts, that question waits for the same
+thread, and Android gives up on System UI before the answer comes:
+
+| Seconds after SurfaceFlinger started | Log line |
+|---|---|
+| 0 | `SurfaceFlinger: SurfaceFlinger is starting` |
+| about 7 | System UI starts and calls `getGPUContextPriority` |
+| about 22 | `ActivityManager: ANR in com.android.systemui`, reason `failed to complete startup` |
+| 24 | `RenderEngine: Shader cache generated 122 shaders in 23913 ms` |
+
+To confirm it is this and nothing else, look at where System UI waited:
+
+```bash
+sdk/platform-tools/adb -s emulator-5554 shell dumpsys dropbox --print system_app_anr | grep -m1 getGPUContextPriority
+```
+
+The property `service.sf.prime_shader_cache` switches the priming off. It
+holds only until the next boot and needs root, so it works on an image
+without the Play Store, not on a store image:
+
+```bash
+adb=sdk/platform-tools/adb
+$adb -s emulator-5554 root
+$adb -s emulator-5554 shell setprop service.sf.prime_shader_cache 0
+$adb -s emulator-5554 shell stop
+$adb -s emulator-5554 shell start
+```
+
+This restarts Android inside the running guest, without priming. Measured
+once: SurfaceFlinger finished its boot in 9 seconds instead of 24, and no
+dialog came. Without the property, every boot brings the dialog back.
+
+`--gpu host` would avoid the slow priming, but see the next section first.
+
+## --gpu host does not start
+
+```text
+ERROR        | Failed to create Vulkan instance. Error VK_ERROR_INCOMPATIBLE_DRIVER.
+GlxEnginegetDefaultDisplay: Failed to open display 0. DISPLAY: [(null)]
+ERROR        | Could not start renderer
+```
+
+These lines are in `logs/<guest>/emulator.log`, and `abgal start` gives up
+after `--timeout`. The emulator wants Vulkan first. Without it, it falls back
+to OpenGL through GLX, and GLX needs an X server. A machine with no display
+has none, even when the graphics card itself works without one. An older
+AMD card on the `radeon` kernel driver has no Vulkan at all. Check both:
+
+```bash
+basename "$(readlink /sys/class/drm/card0/device/driver)"
+echo "DISPLAY=$DISPLAY"
+```
+
+`radeon` and an empty `DISPLAY` mean `--gpu host` cannot start on this
+machine. The guest left behind by the failed start shows as `not visible` in
+`abgal status`. End it with `abgal stop -n <guest>` and start again without
+`--gpu host`.
+
 ## The temperature watch did not start
 
 ```text
