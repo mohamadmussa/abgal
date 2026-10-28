@@ -169,7 +169,7 @@ The guest runs but Android has not finished booting. On a slow machine with
 `--timeout 600`, or look at the guest with
 `sdk/platform-tools/adb -s emulator-5554 logcat`.
 
-## System UI isn't responding after every boot
+## System UI isn't responding after boot
 
 ```text
 System UI isn't responding
@@ -177,10 +177,10 @@ System UI isn't responding
   Wait
 ```
 
-This is not AbGal's message, Android shows it inside the guest. It comes
-after every boot with `--gpu software`, and while it is open every tap lands
-on the dialog, so the guest looks frozen. Tap either button and the guest
-works normally, System UI only started too late.
+This is not AbGal's message, Android shows it inside the guest. It can come
+after every boot with `--gpu software` on a slower machine, and while it is
+open every tap lands on the dialog, so the guest looks frozen. Tap either
+button and the guest works normally, System UI only started too late.
 
 The cause is the shader cache. At boot SurfaceFlinger compiles its shaders
 in advance on its RenderEngine thread. With software rendering that runs on
@@ -208,6 +208,7 @@ without the Play Store, not on a store image:
 ```bash
 adb=sdk/platform-tools/adb
 $adb -s emulator-5554 root
+$adb -s emulator-5554 wait-for-device
 $adb -s emulator-5554 shell setprop service.sf.prime_shader_cache 0
 $adb -s emulator-5554 shell stop
 $adb -s emulator-5554 shell start
@@ -228,18 +229,26 @@ ERROR        | Could not start renderer
 ```
 
 These lines are in `logs/<guest>/emulator.log`, and `abgal start` gives up
-after `--timeout`. The emulator wants Vulkan first. Without it, it falls back
-to OpenGL through GLX, and GLX needs an X server. A machine with no display
-has none, even when the graphics card itself works without one. An older
-AMD card on the `radeon` kernel driver has no Vulkan at all. Check both:
+after `--timeout`. On Linux the emulator renders OpenGL through GLX in this
+mode, and GLX needs an X server. A machine with no display has none, so an
+empty `DISPLAY` alone is enough for the start to fail, even when the graphics
+card itself works without one. Check it first:
 
 ```bash
-basename "$(readlink /sys/class/drm/card0/device/driver)"
 echo "DISPLAY=$DISPLAY"
 ```
 
-`radeon` and an empty `DISPLAY` mean `--gpu host` cannot start on this
-machine. The guest left behind by the failed start shows as `not visible` in
+An empty `DISPLAY` means `--gpu host` cannot start, whatever the card or
+driver. The extra `VK_ERROR_INCOMPATIBLE_DRIVER` line comes from Vulkan, which
+is only set up for Vulkan support inside the guest. An older AMD card on the
+`radeon` kernel driver has no Vulkan at all, and this shows the driver
+(`card0` is not always the graphics card, for example with hybrid graphics):
+
+```bash
+basename "$(readlink /sys/class/drm/card0/device/driver)"
+```
+
+The guest left behind by the failed start shows as `not visible` in
 `abgal status`. End it with `abgal stop -n <guest>` and start again without
 `--gpu host`.
 

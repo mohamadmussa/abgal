@@ -175,7 +175,7 @@ einem langsamen Rechner mit `--gpu software` kann der erste Start länger
 dauern. Gib ihm mit `--timeout 600` mehr Zeit, oder sieh dir das AVD mit
 `sdk/platform-tools/adb -s emulator-5554 logcat` an.
 
-## System UI isn't responding nach jedem Boot
+## System UI isn't responding nach dem Boot
 
 ```text
 System UI isn't responding
@@ -183,11 +183,11 @@ System UI isn't responding
   Wait
 ```
 
-Das ist keine Meldung von AbGal, Android zeigt sie im AVD. Sie kommt nach
-jedem Boot mit `--gpu software`, und solange sie offen ist, landet jeder
-Tipp auf dem Dialog, das AVD wirkt also eingefroren. Ein Tipp auf einen der
-beiden Knöpfe genügt, danach läuft das AVD normal, System UI ist nur zu spät
-gestartet.
+Das ist keine Meldung von AbGal, Android zeigt sie im AVD. Sie kann nach
+jedem Boot mit `--gpu software` auf einem langsameren Rechner kommen, und
+solange sie offen ist, landet jeder Tipp auf dem Dialog, das AVD wirkt also
+eingefroren. Ein Tipp auf einen der beiden Knöpfe genügt, danach läuft das
+AVD normal, System UI ist nur zu spät gestartet.
 
 Die Ursache ist der Shader Cache. Beim Boot kompiliert SurfaceFlinger seine
 Shader vorab in seinem RenderEngine Thread. Mit Software Rendering läuft das
@@ -215,6 +215,7 @@ einem Abbild ohne Play Store, nicht auf einem Store Abbild:
 ```bash
 adb=sdk/platform-tools/adb
 $adb -s emulator-5554 root
+$adb -s emulator-5554 wait-for-device
 $adb -s emulator-5554 shell setprop service.sf.prime_shader_cache 0
 $adb -s emulator-5554 shell stop
 $adb -s emulator-5554 shell start
@@ -237,21 +238,29 @@ ERROR        | Could not start renderer
 ```
 
 Diese Zeilen stehen in `logs/<guest>/emulator.log`, und `abgal start` gibt
-nach `--timeout` auf. Der Emulator will zuerst Vulkan. Ohne Vulkan weicht er
-auf OpenGL über GLX aus, und GLX braucht einen X Server. Ein Rechner ohne
-Bildschirm hat keinen, auch wenn die Grafikkarte selbst ohne einen
-funktioniert. Eine ältere AMD Karte am Kerneltreiber `radeon` hat gar kein
-Vulkan. Prüf beides:
+nach `--timeout` auf. Unter Linux rendert der Emulator in diesem Modus OpenGL
+über GLX, und GLX braucht einen X Server. Ein Rechner ohne Bildschirm hat
+keinen, ein leeres `DISPLAY` allein genügt also, damit der Start scheitert,
+auch wenn die Grafikkarte selbst ohne einen funktioniert. Prüf das zuerst:
 
 ```bash
-basename "$(readlink /sys/class/drm/card0/device/driver)"
 echo "DISPLAY=$DISPLAY"
 ```
 
-`radeon` und ein leeres `DISPLAY` heißen, dass `--gpu host` auf diesem
-Rechner nicht starten kann. Das AVD, das der gescheiterte Start hinterlässt,
-steht in `abgal status` als `not visible`. Beende es mit
-`abgal stop -n <guest>` und starte ohne `--gpu host` neu.
+Ein leeres `DISPLAY` heißt, dass `--gpu host` nicht starten kann, egal welche
+Karte und welcher Treiber. Die zusätzliche Zeile `VK_ERROR_INCOMPATIBLE_DRIVER`
+kommt von Vulkan, das nur für die Vulkan Unterstützung im AVD eingerichtet
+wird. Eine ältere AMD Karte am Kerneltreiber `radeon` hat gar kein Vulkan, und
+das hier zeigt den Treiber (`card0` ist nicht auf jedem Rechner die
+Grafikkarte, zum Beispiel bei Hybridgrafik):
+
+```bash
+basename "$(readlink /sys/class/drm/card0/device/driver)"
+```
+
+Das AVD, das der gescheiterte Start hinterlässt, steht in `abgal status` als
+`not visible`. Beende es mit `abgal stop -n <guest>` und starte ohne
+`--gpu host` neu.
 
 ## Die Temperaturwache ist nicht angelaufen
 
