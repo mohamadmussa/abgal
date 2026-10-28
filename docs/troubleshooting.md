@@ -178,7 +178,7 @@ System UI isn't responding
 ```
 
 This is not AbGal's message, Android shows it inside the guest. It can come
-after every boot with `--gpu software` on a slower machine, and while it is
+after a boot with `--gpu software` on a slower machine, and while it is
 open every tap lands on the dialog, so the guest looks frozen. Tap either
 button and the guest works normally, System UI only started too late.
 

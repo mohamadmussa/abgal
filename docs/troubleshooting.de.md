@@ -184,7 +184,7 @@ System UI isn't responding
 ```
 
 Das ist keine Meldung von AbGal, Android zeigt sie im AVD. Sie kann nach
-jedem Boot mit `--gpu software` auf einem langsameren Rechner kommen, und
+einem Boot mit `--gpu software` auf einem langsameren Rechner kommen, und
 solange sie offen ist, landet jeder Tipp auf dem Dialog, das AVD wirkt also
 eingefroren. Ein Tipp auf einen der beiden Knöpfe genügt, danach läuft das
 AVD normal, System UI ist nur zu spät gestartet.
