@@ -2140,18 +2140,32 @@ def run_runner_script(target, script, extra_args, timeout):
         return SimpleNamespace(returncode=1, stdout="", stderr="%s could not run: %s" % (script, err))
 
 
-def sudo_available():
-    """Whether sudo can run svc.sh without prompting, cached ticket or NOPASSWD.
+def write_probe_script(probe):
+    """A stand-in svc.sh that does nothing, executable by everyone."""
+    probe.write_text("#!/bin/sh\nexit 0\n")
+    probe.chmod(0o755)
 
-    Checked once before create touches config.sh at all, so a missing
-    sudo access is never worked around by registering with GitHub and
-    then having to roll that back again when svc.sh turns out to need a
-    password nothing here can supply.
+
+def sudo_available(target):
+    """Whether sudo can run this runner's own svc.sh without prompting.
+
+    svc.sh does not exist yet, so a stand-in is put at that exact path and
+    really executed. `sudo -n true` is no substitute, it only passes for a
+    blanket NOPASSWD or a live ticket, never for a rule scoped to svc.sh.
     """
-    try:
-        return subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=5).returncode == 0
-    except OSError:
+    probe = target / "svc.sh"
+    if probe.exists():
+        # On the create path svc.sh is only generated later by config.sh.
+        # An existing one is not ours to run as root.
         return False
+    try:
+        write_probe_script(probe)
+        return subprocess.run(["sudo", "-n", str(probe)],
+                              capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    finally:
+        probe.unlink(missing_ok=True)
 
 
 def run_svc_script(target, extra_args, timeout):
@@ -2332,10 +2346,11 @@ def cmd_github_runner_create(args):
         shutil.rmtree(target, ignore_errors=True)
         return problem("could not get a registration token: %s" % error)
 
-    if backend == "host" and not sudo_available():
+    if backend == "host" and not sudo_available(target):
         shutil.rmtree(target, ignore_errors=True)
         return problem("svc.sh needs root and sudo is not ready. Run 'sudo -v' first, "
-                       "or set up passwordless sudo for svc.sh for unattended use.")
+                       "or set up passwordless sudo for svc.sh for unattended use, "
+                       "see docs/github-runner.md for the scoped sudoers rule.")
 
     if backend == "host":
         result = create_host_runner(args.name, target, repo, labels, token)
