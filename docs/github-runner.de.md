@@ -60,6 +60,9 @@ bearbeitet mit `visudo -f`:
 <user> ALL=(root) NOPASSWD: /path/to/abgal/runners/*/svc.sh
 ```
 
+Einzutragen ist der aufgelöste Pfad, so wie `realpath` ihn ausgibt, denn
+abgal löst Symlinks auf.
+
 Weil das Konto selbst in `runners/` schreiben darf, kann es dort ein
 beliebiges `svc.sh` ablegen und als Root ausführen. Die Regel ist für dieses
 Konto in der Praxis gleichbedeutend mit Root. Sie erspart nur die
